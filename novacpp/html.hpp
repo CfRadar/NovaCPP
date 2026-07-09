@@ -3,55 +3,98 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <functional>
+#include <map>
+
+// Include the cpp-httplib web server
+#include "internal/httplib.h"
 
 namespace np {
 
 class NovaBuilder {
 private:
     std::vector<std::string> elements;
+    httplib::Server svr;
+    std::map<std::string, std::function<void()>> callbacks;
 
 public:
-    // Clears the DOM (used when a re-render is triggered by a state change)
     void clear() {
         elements.clear();
     }
 
-    // Note: 'return' is a reserved keyword in C++, so we can't use `np.return()`.
-    // I used `render()` instead, which serves the exact purpose you described!
     void render(const std::string& html_string) {
         elements.push_back(html_string);
     }
 
-    // This method compiles everything into the final index.html
-    void compile(const std::string& output_path) {
-        std::ofstream file(output_path);
-        if (!file.is_open()) {
-            std::cerr << "NovaCPP Error: Could not open " << output_path << " for writing.\n";
-            return;
-        }
+    NovaBuilder& operator<<(const std::string& html_string) {
+        elements.push_back(html_string);
+        return *this;
+    }
 
-        // Write the basic HTML wrapper
-        file << "<!DOCTYPE html>\n";
-        file << "<html lang=\"en\">\n<head>\n";
-        file << "    <meta charset=\"UTF-8\">\n";
-        file << "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
-        file << "    <title>NovaCPP App</title>\n";
-        file << "    <link rel=\"stylesheet\" href=\"styles.css\">\n";
-        file << "</head>\n<body>\n";
-        file << "    <div id=\"root\">\n";
+    // Register a C++ callback for a button action (like React's onClick)
+    void onClick(const std::string& actionName, std::function<void()> callback) {
+        callbacks[actionName] = callback;
+    }
 
-        // Add everything line by line exactly as added in the src files
-        for (const auto& el : elements) {
-            file << "        " << el << "\n";
-        }
-
-        // Close the wrapper
-        file << "    </div>\n";
-        file << "    <script src=\"app.js\"></script>\n";
-        file << "</body>\n</html>\n";
+    // Generate the HTML string
+    std::string generateHTML(bool includeWrapper = true) {
+        std::string out;
         
-        file.close();
-        std::cout << "NovaCPP: Successfully built UI to " << output_path << "!\n";
+        if (includeWrapper) {
+            out += "<!DOCTYPE html>\n";
+            out += "<html lang=\"en\">\n<head>\n";
+            out += "    <meta charset=\"UTF-8\">\n";
+            out += "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
+            out += "    <title>NovaCPP App</title>\n";
+            out += "    <link rel=\"stylesheet\" href=\"styles.css\">\n";
+            out += "</head>\n<body>\n";
+            out += "    <div id=\"root\">\n";
+        }
+
+        for (const auto& el : elements) {
+            out += "        " + el + "\n";
+        }
+
+        if (includeWrapper) {
+            out += "    </div>\n";
+            out += "    <script src=\"nova.js\"></script>\n";
+            out += "    <script src=\"app.js\"></script>\n";
+            out += "</body>\n</html>\n";
+        }
+        return out;
+    }
+
+    // Starts the Live Server instead of just writing a static file
+    void listen(int port, std::function<void(NovaBuilder&)> renderCallback) {
+        // Serve static files from the render directory (like styles.css)
+        svr.set_mount_point("/", "./render");
+
+        // The root route renders the entire HTML shell
+        svr.Get("/", [&](const httplib::Request& req, httplib::Response& res) {
+            this->clear();
+            renderCallback(*this);
+            res.set_content(this->generateHTML(true), "text/html");
+        });
+
+        // The action route handles AJAX requests from the browser
+        svr.Post(R"(/nova/action/(.*))", [&](const httplib::Request& req, httplib::Response& res) {
+            std::string actionName = req.matches[1];
+            
+            // Execute the registered C++ callback
+            if (callbacks.find(actionName) != callbacks.end()) {
+                callbacks[actionName]();
+            }
+
+            // Re-render the app based on the new state
+            this->clear();
+            renderCallback(*this);
+            
+            // Send ONLY the inner HTML back to the browser to inject into the DOM
+            res.set_content(this->generateHTML(false), "text/html");
+        });
+
+        std::cout << "NovaCPP: Live Server running! Open http://localhost:" << port << " in your browser.\n";
+        svr.listen("0.0.0.0", port);
     }
 };
 
