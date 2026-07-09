@@ -12,7 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             // Send the click event to our C++ backend server
             const response = await fetch('/nova/action/' + actionName, {
-                method: 'POST'
+                method: 'POST',
+                credentials: 'same-origin' // Ensures the nova_session cookie is sent!
             });
 
             if (response.ok) {

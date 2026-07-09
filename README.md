@@ -1,95 +1,99 @@
-# NovaCPP 🚀
+# 🌌 NovaCPP Framework
 
-NovaCPP is an ambitious, modern C++ web development framework. It brings the declarative, component-based UI experience of popular JavaScript frameworks (like React) directly into native C++. 
+Welcome to **NovaCPP**, the fastest way to build beautiful, modern, interactive web applications using pure C++. 
 
-NovaCPP features a blazing-fast **Backend-Driven Live Web Architecture**. Your C++ application acts as an active backend server, automatically synchronizing its state with the browser in real-time without you ever having to write complex JavaScript or deal with WebAssembly toolchains.
+NovaCPP gives you the developer experience of **React**, but completely inside a lightning-fast C++ server. It automatically handles isolated browser sessions, DOM rendering, state reactivity, and REST API fetching without you having to write a single line of backend routing logic.
 
-## ✨ Features
+---
 
-- **Declarative UI Syntax**: Write HTML components seamlessly using a clean, chained builder syntax (`operator<<`).
-- **Reactive State Management**: Built-in state wrappers (`np::State<T>`) that automatically manage values and UI synchronization.
-- **Backend-Driven Interactivity**: Bind HTML button clicks directly to native C++ lambdas. NovaCPP handles the background network requests and DOM swapping invisibly.
-- **Live C++ Web Server**: Includes an embedded, lightning-fast HTTP server that dynamically serves routes and updates.
-- **Zero Configuration Setup**: The included wrapper script automatically manages CMake initialization, compilation, and execution.
+## 🚀 1. Setup Instructions
 
-## 📋 Prerequisites
+To start building with NovaCPP on Windows, you only need standard C++ tools. You **do not** need Node.js, Python, or complex libraries like OpenSSL.
 
-To develop with NovaCPP, ensure you have the following installed on your system:
-- **C++ Compiler**: A modern C++17 compatible compiler (e.g., MSVC, GCC, Clang).
-- **CMake**: Version 3.10 or higher.
-- *(For Windows Users)*: Visual Studio Build Tools (Desktop development with C++ workload).
+### Prerequisites
+1. **CMake** (v3.10+) installed and added to your System PATH.
+2. **C++ Compiler** (MSVC via Visual Studio is highly recommended).
 
-## 🚀 Getting Started
+### Running the App
+1. Clone this repository.
+2. Open a terminal (PowerShell) in the folder.
+3. Run the automated build script:
+```powershell
+.\nova build run
+```
+That's it! The framework will automatically configure CMake, compile your C++ code, launch the live server in the background, and open `http://localhost:8080` in your browser.
 
-Getting started is incredibly easy. Simply clone the repository and run the included script!
+---
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/CfRadar/NovaCPP.git
-   cd NovaCPP
-   ```
+## 🛠️ 2. The Core Syntax (Step-by-Step)
 
-2. Build and run the Live Server:
-   ```powershell
-   .\nova build run
-   ```
-   *This single command automatically configures CMake (if it's a fresh clone), compiles the C++ source code, launches the live HTTP server, and instantly opens your default browser!*
+Everything you build in NovaCPP happens inside the `renderApp()` function in `src/App.cpp`. Let's explore the core features one by one.
 
-## 📖 Syntax and Usage
+### 🔹 Reactive State (`np::State`)
+Just like React's `useState`, NovaCPP allows you to define reactive variables. However, because NovaCPP runs on a server, it uses **Automatic Session State**. This means that if 100 users connect to your app simultaneously, NovaCPP automatically isolates these variables so every single user gets their own private counter!
 
-### The `NovaBuilder` Class
-NovaCPP uses a builder pattern for rendering UI. You can seamlessly chain HTML elements together using the elegant `<<` operator, or utilize C++ Raw String Literals (`R"(...)"`) for massive, multi-line HTML blocks without quotes.
-
-**Example component (`src/App.cpp`)**:
 ```cpp
-#include "../novacpp/html.hpp"
-#include "../novacpp/state.hpp"
-
-// 1. Declare a reactive state variable
+// Define your state outside the render function
 np::State<int> counter(0);
+np::State<std::string> username("Guest");
 
-void renderApp(np::NovaBuilder& np) {
-    // 2. Register C++ callbacks for button clicks
-    np.onClick("increment", []() {
-        counter = counter + 1; // Pure C++ logic!
-    });
-
-    np.onClick("decrement", []() {
-        counter = counter - 1; 
-    });
-
-    // 3. Render the Virtual DOM
-    np << "<div class='card'>"
-       << "    <h1>Counter: " + std::to_string(counter.get()) + "</h1>"
-       // Use the nova-click attribute to bind the HTML button directly to the C++ callback
-       << "    <button nova-click='decrement'>- Decrement</button>"
-       << "    <button nova-click='increment'>+ Increment</button>"
-       << "</div>";
-}
+// Inside your render function, access the value using .get()
+int current_value = counter.get();
 ```
 
-### Framework Initialization
-In your `main.cpp`, the framework is instantiated and the server is launched:
+### 🔹 HTML Rendering (`np <<`)
+You build your UI by streaming HTML strings into the `NovaBuilder` using the `<<` operator. The framework automatically parses this into the Virtual DOM and ships it to the browser.
+
 ```cpp
-#include "../novacpp/html.hpp"
-
-void renderApp(np::NovaBuilder& np);
-
-int main() {
-    // 1. Create the instance of the framework
-    np::NovaBuilder np;
-    
-    // 2. Start the Live Server on port 8080
-    // We pass renderApp so the server can automatically re-render 
-    // the UI whenever a button triggers a state change.
-    np.listen(8080, renderApp);
-    
-    return 0;
+void renderApp(np::NovaBuilder& np) {
+    np << "<h1>Welcome to NovaCPP</h1>";
+    np << "<p>The counter is at: " + std::to_string(counter.get()) + "</p>";
 }
 ```
 
-## 🛠️ Project Structure
-- `src/` - Write your application code here (`main.cpp`, `App.cpp`).
-- `novacpp/` - The core framework headers containing the engine (Do not edit).
-- `render/` - Static assets and the client-side JavaScript bridge (`nova.js`).
-- `build/` - CMake build artifacts (Generated automatically).
+### 🔹 Interactivity (`np.onClick`)
+To make your app interactive, you can bind C++ lambdas to HTML buttons. When a user clicks the button in their browser, the C++ code executes instantly on the backend, and the UI dynamically updates without refreshing the page!
+
+```cpp
+void renderApp(np::NovaBuilder& np) {
+    // 1. Define what happens when a button is clicked
+    np.onClick("add_one", []() {
+        counter = counter + 1; // Update your state
+    });
+
+    // 2. Bind the callback to your HTML using the 'nova-click' attribute
+    np << "<button nova-click='add_one'>Click Me!</button>";
+}
+```
+
+### 🔹 Lifecycle Hooks (`np.onLoad`)
+Sometimes you need to reset variables or fetch initial data exactly when a user first opens your website (or when they hit refresh). Use `np.onLoad()` (which acts identically to React's `useEffect(..., [])`).
+
+```cpp
+void renderApp(np::NovaBuilder& np) {
+    np.onLoad([]() {
+        // This runs once per user exactly when they load the page
+        counter = 0; 
+    });
+}
+```
+
+### 🔹 Native REST API Fetching (`np::fetch`)
+Need to download JSON from the internet? Forget installing massive libraries like libcurl. NovaCPP has a blazing-fast, built-in HTTPS client powered by native Windows networking.
+
+```cpp
+void renderApp(np::NovaBuilder& np) {
+    np.onClick("get_weather", []() {
+        // Effortlessly download data from any public API over HTTPS
+        std::string json = np::fetch("https://api.weather.gov/...");
+        
+        // Parse the JSON and update your state!
+        weather_state = parse(json); 
+    });
+}
+```
+
+---
+
+## 🎨 3. Styling Your App
+To keep your C++ code pristine and readable, all of your CSS is automatically loaded from `render/styles.css`. Simply write standard CSS in that file, and your `App.cpp` components will beautifully inherit the styles.
