@@ -8,7 +8,20 @@
 #include <random>
 #include <ctime>
 
-// Include the cpp-httplib web server
+namespace np {
+    class NovaBuilder;
+    
+    // Component Interface for surgical DOM updates
+    class Component {
+    public:
+        std::string id;
+        Component(const std::string& id) : id(id) {}
+        virtual void render(NovaBuilder& np) = 0;
+        virtual ~Component() = default;
+    };
+} // namespace np
+
+// Include the cpp-httplib web server (This is massive, so we include it AFTER Component definition)
 #include "internal/httplib.h"
 #include "state.hpp"
 
@@ -46,6 +59,7 @@ private:
     std::vector<std::string> elements;
     httplib::Server svr;
     std::map<std::string, std::function<void()>> callbacks;
+    std::map<std::string, Component*> components; // Map of registered components
 
 public:
     void clear() {
@@ -69,6 +83,18 @@ public:
     // Register a C++ callback that runs when the page is loaded/refreshed
     void onLoad(std::function<void()> callback) {
         callbacks["__onLoad"] = callback;
+    }
+
+    // Register and render a modular component
+    void renderComponent(Component& comp, int pollIntervalMs = 0) {
+        components[comp.id] = &comp;
+        if (pollIntervalMs > 0) {
+            elements.push_back("<div id=\"" + comp.id + "\" nova-poll=\"" + std::to_string(pollIntervalMs) + "\">");
+        } else {
+            elements.push_back("<div id=\"" + comp.id + "\">");
+        }
+        comp.render(*this);
+        elements.push_back("</div>");
     }
 
     // Generate the HTML string
@@ -167,12 +193,35 @@ public:
                 callbacks[actionName]();
             }
 
-            // Re-render the app based on the user's isolated state
-            this->clear();
-            renderCallback(*this);
+            // Check if this action targeted a specific component
+            std::string targetId = req.get_header_value("X-Nova-Target");
             
-            // Send ONLY the inner HTML back to the browser
-            res.set_content(this->generateHTML(false), "text/html");
+            if (!targetId.empty() && components.find(targetId) != components.end()) {
+                // PARTIAL RENDER: Only re-render the targeted component
+                NovaBuilder partialBuilder;
+                components[targetId]->render(partialBuilder);
+                res.set_content(partialBuilder.generateHTML(false), "text/html");
+            } else {
+                // FULL RENDER: Re-render the whole app (fallback)
+                this->clear();
+                renderCallback(*this);
+                res.set_content(this->generateHTML(false), "text/html");
+            }
+        });
+
+        // The polling route handles automatic background updates
+        svr.Post("/nova/poll", [&](const httplib::Request& req, httplib::Response& res) {
+            this->initializeSessionContext(req, res);
+
+            std::string targetId = req.get_header_value("X-Nova-Target");
+            if (!targetId.empty() && components.find(targetId) != components.end()) {
+                // PARTIAL RENDER: Only re-render the targeted component
+                NovaBuilder partialBuilder;
+                components[targetId]->render(partialBuilder);
+                res.set_content(partialBuilder.generateHTML(false), "text/html");
+            } else {
+                res.status = 404;
+            }
         });
 
         std::cout << "NovaCPP: Live Server running! Open http://localhost:" << port << " in your browser.\n";
