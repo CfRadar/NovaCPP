@@ -193,3 +193,22 @@ When defining components, simply use column span classes (`col-12`, `col-6`, `co
     Content...
 </div>
 ```
+
+---
+
+## ☁️ 8. Cloud Deployment (Docker & Railway/Render)
+
+NovaCPP is a fully cross-platform codebase built to be deployed on modern cloud architecture. 
+
+Because NovaCPP is a high-performance, persistent C++ backend (and not a serverless function), **it cannot be hosted on Vercel**. Instead, it includes a highly-optimized, multi-stage `Dockerfile` designed for deployment on **Railway**, **Render**, or **Fly.io**.
+
+The framework features a **Dual Network Engine**:
+1. When you run `nova dev` on **Windows**, it automatically compiles using ultra-fast `WinHTTP` Native Networking.
+2. When the `Dockerfile` builds your project on a **Linux** server, the preprocessor seamlessly injects a secure OpenSSL-backed network fallback without you changing a single line of your application code!
+
+### How to Deploy
+1. Push your NovaCPP folder to a **GitHub Repository**.
+2. Log into [Railway.app](https://railway.app/) or [Render.com](https://render.com/).
+3. Select **"Deploy from GitHub repo"** and choose your repository.
+
+The platform will automatically detect the `Dockerfile`, spin up a Linux environment, compile your C++ binary, and host your framework live on the internet!

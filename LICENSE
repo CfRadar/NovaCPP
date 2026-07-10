@@ -1,0 +1,19 @@
+NovaCPP Custom License
+
+Copyright (c) 2026, NovaCPP Project
+All rights reserved.
+
+This software is provided "free to use" for any personal or commercial applications built ON TOP OF the NovaCPP framework. You are granted a non-exclusive, royalty-free license to use this framework to develop, build, and deploy your own web applications.
+
+However, the following restrictions apply:
+1. DO NOT COPY: You may not copy, redistribute, sub-license, or republish the NovaCPP framework source code itself.
+2. NO DERIVATIVE WORKS: You may not modify the framework source code for the purpose of distributing a competing framework or derivative tool.
+3. NO MISREPRESENTATION: You may not claim ownership or authorship of the NovaCPP framework.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
