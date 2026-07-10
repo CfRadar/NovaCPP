@@ -12,8 +12,13 @@ int main() {
     np.route("/", renderHomePage);
     np.route("/about", renderAboutPage);
 
-    // 3. Start the Live Server on port 8080!
-    np.listen(8080);
+    // 3. Start the Live Server on the Cloud-provided PORT (or default to 8080)
+    int port = 8080;
+    if (const char* env_p = std::getenv("PORT")) {
+        port = std::stoi(env_p);
+    }
+    
+    np.listen(port);
     
     return 0;
 }
