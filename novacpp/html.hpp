@@ -60,10 +60,13 @@ private:
     httplib::Server svr;
     std::map<std::string, std::function<void()>> callbacks;
     std::map<std::string, Component*> components; // Map of registered components
+    std::map<std::string, std::function<void(NovaBuilder&)>> routes; // Registered pages
+    std::string current_path = "/"; // Tracks the user's current SPA route
 
 public:
     void clear() {
         elements.clear();
+        // We do NOT clear components here so that polling components remain registered!
     }
 
     void render(const std::string& html_string) {
@@ -83,6 +86,11 @@ public:
     // Register a C++ callback that runs when the page is loaded/refreshed
     void onLoad(std::function<void()> callback) {
         callbacks["__onLoad"] = callback;
+    }
+
+    // Register a route for the Single Page Application
+    void route(const std::string& path, std::function<void(NovaBuilder&)> renderCallback) {
+        routes[path] = renderCallback;
     }
 
     // Register and render a modular component
@@ -140,7 +148,7 @@ public:
     }
 
     // Starts the Live Server
-    void listen(int port, std::function<void(NovaBuilder&)> renderCallback) {
+    void listen(int port) {
         
         // Serve static CSS file with strict MIME type
         svr.Get("/styles.css", [](const httplib::Request& req, httplib::Response& res) {
@@ -168,18 +176,26 @@ public:
             } else { res.status = 404; }
         });
 
-        // The root route renders the entire HTML shell
-        svr.Get("/", [&](const httplib::Request& req, httplib::Response& res) {
+        // SPA Navigation Route (React Router style fast swap)
+        svr.Post("/nova/navigate", [&](const httplib::Request& req, httplib::Response& res) {
             this->initializeSessionContext(req, res);
+            std::string path = req.get_header_value("X-Nova-Path");
+            
+            if (routes.find(path) != routes.end()) {
+                this->current_path = path;
+                this->clear();
+                
+                // Trigger onLoad for the new route
+                if (callbacks.find("__onLoad") != callbacks.end()) {
+                    callbacks["__onLoad"]();
+                }
 
-            // Trigger onLoad lifecycle hook if registered
-            if (callbacks.find("__onLoad") != callbacks.end()) {
-                callbacks["__onLoad"]();
+                routes[path](*this);
+                // Return only inner HTML since it's an SPA transition
+                res.set_content(this->generateHTML(false), "text/html");
+            } else {
+                res.status = 404;
             }
-
-            this->clear();
-            renderCallback(*this);
-            res.set_content(this->generateHTML(true), "text/html");
         });
 
         // The action route handles AJAX requests from the browser
@@ -202,9 +218,11 @@ public:
                 components[targetId]->render(partialBuilder);
                 res.set_content(partialBuilder.generateHTML(false), "text/html");
             } else {
-                // FULL RENDER: Re-render the whole app (fallback)
+                // FULL RENDER: Re-render the current route
                 this->clear();
-                renderCallback(*this);
+                if (routes.find(this->current_path) != routes.end()) {
+                    routes[this->current_path](*this);
+                }
                 res.set_content(this->generateHTML(false), "text/html");
             }
         });
@@ -221,6 +239,31 @@ public:
                 res.set_content(partialBuilder.generateHTML(false), "text/html");
             } else {
                 res.status = 404;
+            }
+        });
+
+        // Wildcard fallback for direct URL navigation (e.g. hitting refresh on /about)
+        // Must be placed at the bottom so it doesn't swallow static files!
+        svr.Get(".*", [&](const httplib::Request& req, httplib::Response& res) {
+            std::string path = req.path;
+            
+            // Ignore static assets that slipped through
+            if (path == "/styles.css" || path == "/nova.js" || path == "/app.js") return;
+
+            if (routes.find(path) != routes.end()) {
+                this->current_path = path;
+                this->initializeSessionContext(req, res);
+
+                if (callbacks.find("__onLoad") != callbacks.end()) {
+                    callbacks["__onLoad"]();
+                }
+
+                this->clear();
+                routes[path](*this);
+                res.set_content(this->generateHTML(true), "text/html");
+            } else {
+                res.status = 404;
+                res.set_content("<h1>404 Not Found</h1>", "text/html");
             }
         });
 
