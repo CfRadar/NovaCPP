@@ -84,7 +84,7 @@ public:
     void render(np::NovaBuilder& np) override {
         np << R"(
         <div class="bento-card col-4">
-            <div class="badge">ADVANCED REST CLIENT</div>
+            <div class="badge">ADVANCED REST API TEST</div>
             <div class="quote-box" style="margin-bottom: 0.8rem; height: 100px;">
                 <div class="quote-text" style="-webkit-line-clamp: 4;">)" + quote.get() + R"(</div>
             </div>
@@ -129,7 +129,7 @@ ClockComponent clockComp;
 CounterComponent counterComp;
 AdvancedApiComponent apiComp;
 
-// Feature blocks (No Emojis)
+// Feature blocks
 FeatureBlock speedFeat("feat-speed", "01", "Blazing Fast", "Compiled C++ backend provides absolute millisecond response times.");
 FeatureBlock spaFeat("feat-spa", "02", "SPA Routing", "Seamless page transitions without any browser reloads or flashing.");
 FeatureBlock stateFeat("feat-state", "03", "Isolated State", "Every user session instantly gets its own thread-local variables.");

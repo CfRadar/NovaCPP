@@ -8,10 +8,16 @@ add_executable(NovaCPP src/main.cpp src/App.cpp)
 
 if(WIN32)
     target_link_libraries(NovaCPP ws2_32)
+else()
+    # On Linux, find OpenSSL and link it for the cpp-httplib fallback
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(NovaCPP OpenSSL::SSL OpenSSL::Crypto pthread)
 endif()
 
 # Custom target to open the HTML file using the default browser
-add_custom_target(run-html
-    COMMAND cmd.exe /c start "" "http://localhost:8080"
-    COMMENT "Opening http://localhost:8080 in the default browser..."
-)
+if(WIN32)
+    add_custom_target(run-html
+        COMMAND cmd.exe /c start "" "http://localhost:8080"
+        COMMENT "Opening http://localhost:8080 in the default browser..."
+    )
+endif()

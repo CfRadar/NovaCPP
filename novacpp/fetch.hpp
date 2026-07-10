@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef _WIN32
+
 #include <windows.h>
 #include <winhttp.h>
 #include <string>
@@ -120,3 +122,93 @@ inline std::string fetch(const std::string& urlStr,
 }
 
 } // namespace np
+
+#else // ==================== LINUX / UNIX FALLBACK ====================
+
+#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include "httplib.h"
+#include <string>
+
+namespace np {
+
+inline void parseUrl(const std::string& url, std::string& host, std::string& path) {
+    size_t pos = url.find("://");
+    if (pos != std::string::npos) {
+        size_t host_start = pos + 3;
+        size_t path_start = url.find("/", host_start);
+        if (path_start != std::string::npos) {
+            host = url.substr(0, path_start);
+            path = url.substr(path_start);
+        } else {
+            host = url;
+            path = "/";
+        }
+    } else {
+        host = url;
+        path = "/";
+    }
+}
+
+// Fetches data from a REST API over HTTP/HTTPS using cpp-httplib (Linux fallback)
+inline std::string fetch(const std::string& urlStr, 
+                         const std::string& methodStr = "GET", 
+                         const std::string& bodyStr = "", 
+                         const std::string& headersStr = "") {
+    
+    std::string host, path;
+    parseUrl(urlStr, host, path);
+    
+    httplib::Client cli(host);
+    cli.set_connection_timeout(10);
+    cli.set_read_timeout(10);
+    
+    httplib::Headers headers = {
+        {"User-Agent", "NovaCPP-Framework"}
+    };
+    
+    // Parse custom headers
+    size_t start = 0;
+    while (start < headersStr.length()) {
+        size_t end = headersStr.find("\r\n", start);
+        if (end == std::string::npos) break;
+        std::string line = headersStr.substr(start, end - start);
+        size_t colon = line.find(":");
+        if (colon != std::string::npos) {
+            std::string key = line.substr(0, colon);
+            std::string val = line.substr(colon + 1);
+            size_t first = val.find_first_not_of(" ");
+            if (first != std::string::npos) val = val.substr(first);
+            headers.insert({key, val});
+        }
+        start = end + 2;
+    }
+    
+    httplib::Result res;
+    if (methodStr == "GET") {
+        res = cli.Get(path, headers);
+    } else if (methodStr == "POST") {
+        std::string contentType = "text/plain";
+        auto it = headers.find("Content-Type");
+        if (it != headers.end()) contentType = it->second;
+        res = cli.Post(path, headers, bodyStr, contentType);
+    } else if (methodStr == "PUT") {
+        std::string contentType = "text/plain";
+        auto it = headers.find("Content-Type");
+        if (it != headers.end()) contentType = it->second;
+        res = cli.Put(path, headers, bodyStr, contentType);
+    } else if (methodStr == "DELETE") {
+        res = cli.Delete(path, headers);
+    }
+    
+    if (res && res->status >= 200 && res->status < 300) {
+        return res->body;
+    } else if (res) {
+        return res->body;
+    } else {
+        return "{\"error\":\"Linux Request failed\"}";
+    }
+}
+
+} // namespace np
+
+#endif

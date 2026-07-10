@@ -7,10 +7,10 @@ function setupPolling() {
     pollElements.forEach(el => {
         const intervalMs = parseInt(el.getAttribute('nova-poll'));
         const targetId = el.id;
-        
+
         if (intervalMs && targetId && !el.hasAttribute('nova-poll-active')) {
             el.setAttribute('nova-poll-active', 'true');
-            
+
             setInterval(async () => {
                 try {
                     const response = await fetch('/nova/poll', {
@@ -18,7 +18,7 @@ function setupPolling() {
                         headers: { 'X-Nova-Target': targetId },
                         credentials: 'same-origin'
                     });
-                    
+
                     if (response.ok) {
                         const html = await response.text();
                         const targetEl = document.getElementById(targetId);
@@ -42,7 +42,7 @@ async function navigateTo(path) {
             headers: { 'X-Nova-Path': path },
             credentials: 'same-origin'
         });
-        
+
         if (response.ok) {
             const html = await response.text();
             document.getElementById('root').innerHTML = html;
@@ -66,10 +66,10 @@ document.addEventListener('click', async (e) => {
     if (e.target.hasAttribute('nova-link')) {
         e.preventDefault();
         const path = e.target.getAttribute('href');
-        
+
         // Push to browser history
         window.history.pushState({}, "", path);
-        
+
         // Execute the navigation
         await navigateTo(path);
         return;
@@ -78,7 +78,7 @@ document.addEventListener('click', async (e) => {
     // Intercept component interactions
     if (e.target.hasAttribute('nova-click')) {
         const actionName = e.target.getAttribute('nova-click');
-        const targetId = e.target.getAttribute('nova-target'); 
+        const targetId = e.target.getAttribute('nova-target');
 
         try {
             const headers = {};
@@ -92,7 +92,7 @@ document.addEventListener('click', async (e) => {
 
             if (response.ok) {
                 const html = await response.text();
-                
+
                 if (targetId) {
                     const el = document.getElementById(targetId);
                     if (el) {
