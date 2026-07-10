@@ -77,18 +77,23 @@ public:
     }
 };
 
-class ApiFetchComponent : public np::Component {
+class AdvancedApiComponent : public np::Component {
 public:
-    ApiFetchComponent() : Component("api-comp") {}
+    AdvancedApiComponent() : Component("api-comp") {}
 
     void render(np::NovaBuilder& np) override {
         np << R"(
         <div class="bento-card col-4">
-            <div class="badge">REST API CLIENT</div>
-            <div class="quote-box">
-                <div class="quote-text">")" + quote.get() + R"("</div>
+            <div class="badge">ADVANCED REST CLIENT</div>
+            <div class="quote-box" style="margin-bottom: 0.8rem; height: 100px;">
+                <div class="quote-text" style="-webkit-line-clamp: 4;">)" + quote.get() + R"(</div>
             </div>
-            <button class="btn-primary" style="width: 100%;" nova-click="fetchData" nova-target="api-comp">Ask the Oracle</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; width: 100%;">
+                <button class="btn-secondary" nova-click="apiGet" nova-target="api-comp">GET</button>
+                <button class="btn-primary" nova-click="apiPost" nova-target="api-comp">POST</button>
+                <button class="btn-secondary" nova-click="apiPut" nova-target="api-comp">PUT</button>
+                <button class="btn-primary" style="background: #ff3b30;" nova-click="apiDelete" nova-target="api-comp">DELETE</button>
+            </div>
         </div>
         )";
     }
@@ -122,7 +127,7 @@ public:
 NavBarComponent navComp;
 ClockComponent clockComp;
 CounterComponent counterComp;
-ApiFetchComponent apiComp;
+AdvancedApiComponent apiComp;
 
 // Feature blocks (No Emojis)
 FeatureBlock speedFeat("feat-speed", "01", "Blazing Fast", "Compiled C++ backend provides absolute millisecond response times.");
@@ -138,28 +143,42 @@ void renderHomePage(np::NovaBuilder& np) {
     
     np.onLoad([]() {
         counter = 0;
-        quote = "Click the button to receive wisdom.";
+        quote = "Select a REST API method to test network connectivity.";
     });
 
     np.onClick("increment", []() { counter = counter + 1; });
     np.onClick("decrement", []() { counter = counter - 1; });
 
-    np.onClick("fetchData", []() {
-        quote = "Consulting the oracle...";
-        std::string json = np::fetch("https://api.adviceslip.com/advice");
-        std::string target = "\"advice\"";
-        size_t start = json.find(target);
-        if (start != std::string::npos) {
-            start = json.find("\"", start + target.length()); 
-            if (start != std::string::npos) {
-                start++; 
-                size_t end = json.find("\"", start); 
-                if (end != std::string::npos) {
-                    quote = json.substr(start, end - start);
-                }
-            }
-        }
-        if (quote.get() == "Consulting the oracle...") quote = "Error: The oracle is asleep.";
+    np.onClick("apiGet", []() {
+        quote = "Fetching GET...";
+        std::string res = np::fetch("https://jsonplaceholder.typicode.com/posts/1", "GET");
+        if (res.find("\"id\": 1") != std::string::npos) quote = "GET Success!\n" + res.substr(0, 50) + "...";
+        else quote = "GET Failed!";
+    });
+
+    np.onClick("apiPost", []() {
+        quote = "Sending POST...";
+        std::string body = R"({"title":"NovaCPP","body":"REST Client","userId":1})";
+        std::string headers = "Content-Type: application/json\r\n";
+        std::string res = np::fetch("https://jsonplaceholder.typicode.com/posts", "POST", body, headers);
+        if (res.find("\"id\": 101") != std::string::npos) quote = "POST Created Successfully!\n" + res;
+        else quote = "POST Failed!";
+    });
+
+    np.onClick("apiPut", []() {
+        quote = "Sending PUT...";
+        std::string body = R"({"id":1,"title":"Updated","body":"Data","userId":1})";
+        std::string headers = "Content-Type: application/json\r\n";
+        std::string res = np::fetch("https://jsonplaceholder.typicode.com/posts/1", "PUT", body, headers);
+        if (res.find("\"title\": \"Updated\"") != std::string::npos) quote = "PUT Updated Successfully!";
+        else quote = "PUT Failed!";
+    });
+
+    np.onClick("apiDelete", []() {
+        quote = "Sending DELETE...";
+        std::string res = np::fetch("https://jsonplaceholder.typicode.com/posts/1", "DELETE");
+        if (res.find("{}") != std::string::npos || res.find("{\n}") != std::string::npos) quote = "DELETE Successful!";
+        else quote = "DELETE Failed! Response: " + res;
     });
 
     // Render the Home Page Layout (12-Column Grid)

@@ -144,14 +144,39 @@ The browser will silently ping the C++ server in the background every second, ex
 
 ---
 
-## 🌐 6. Native REST API Fetching (`np::fetch`)
+## 🌐 6. Native Full REST API Client (`np::fetch`)
 
-Need to download JSON from the internet? Forget installing massive libraries like libcurl. NovaCPP has a blazing-fast, built-in HTTPS client powered by native Windows networking.
+Forget installing massive, bloated libraries like `libcurl`. NovaCPP features a blazing-fast, built-in HTTPS client powered by native Windows networking. 
+
+You are not limited to just fetching data. Your C++ backend can perform full CRUD operations (`GET`, `POST`, `PUT`, `DELETE`), allowing you to talk to databases, Stripe, OpenAI, and any other REST API natively!
 
 ```cpp
 void renderHomePage(np::NovaBuilder& np) {
-    np.onClick("get_weather", []() {
-        std::string json = np::fetch("https://api.weather.gov/...");
+    
+    // 1. Fetching Data (GET)
+    np.onClick("get_data", []() {
+        std::string json = np::fetch("https://api.example.com/users");
+    });
+
+    // 2. Creating Data (POST)
+    np.onClick("create_user", []() {
+        std::string body = R"({"name": "NovaCPP", "role": "admin"})";
+        std::string headers = "Content-Type: application/json\r\n";
+        
+        // Pass the method, body, and custom headers directly into fetch!
+        std::string response = np::fetch("https://api.example.com/users", "POST", body, headers);
+    });
+
+    // 3. Updating Data (PUT)
+    np.onClick("update_user", []() {
+        std::string body = R"({"name": "NovaCPP v2"})";
+        std::string headers = "Content-Type: application/json\r\n";
+        std::string response = np::fetch("https://api.example.com/users/1", "PUT", body, headers);
+    });
+
+    // 4. Deleting Data (DELETE)
+    np.onClick("delete_user", []() {
+        std::string response = np::fetch("https://api.example.com/users/1", "DELETE");
     });
 }
 ```
