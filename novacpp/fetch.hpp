@@ -125,7 +125,6 @@ inline std::string fetch(const std::string& urlStr,
 
 #else // ==================== LINUX / UNIX FALLBACK ====================
 
-#define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "internal/httplib.h"
 #include <string>
 

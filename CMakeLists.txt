@@ -12,6 +12,7 @@ else()
     # On Linux, find OpenSSL and link it for the cpp-httplib fallback
     find_package(OpenSSL REQUIRED)
     target_link_libraries(NovaCPP OpenSSL::SSL OpenSSL::Crypto pthread)
+    target_compile_definitions(NovaCPP PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
 endif()
 
 # Custom target to open the HTML file using the default browser
