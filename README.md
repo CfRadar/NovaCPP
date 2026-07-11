@@ -13,6 +13,24 @@ NovaCPP operates by generating HTML on the server and surgically swapping DOM el
 ### The Full-Stack Monolith
 Because your frontend UI and your backend logic are compiled into the exact same native C++ `.exe` binary, they share the same memory space. Your UI components can read backend variables, verify authentication, or query databases at the speed of C++ RAM (nanoseconds). 
 
+### The "No-API" Paradigm (Why you don't need REST endpoints)
+In traditional web development (like React + Node.js), developers are forced to build JSON REST API routes (e.g., `/api/checkout`) because the frontend and backend are physically disconnected. The frontend has to hit a network endpoint just to talk to the backend.
+
+**In NovaCPP, the frontend IS the backend.** Because your UI and backend logic live in the exact same C++ program, your UI can trigger backend functions directly. If you want to integrate Stripe or a database, you just execute that logic inside a button click:
+```cpp
+np.onClick("checkout", []() {
+    // 1. Process payment via Stripe (Backend)
+    bool success = Stripe::chargeCustomer(1500);
+
+    // 2. Save to Postgres (Backend)
+    if (success) Database::saveOrder();
+
+    // 3. Update the UI instantly!
+    checkoutState = "Payment Successful!";
+});
+```
+The C++ server executes the Stripe logic, queries the database, and updates the HTML instantly—all without you ever needing to write a single `/api/...` JSON route!
+
 ### Recommended Directory Structure
 As your application scales, it is highly recommended to split your project into frontend UI components and pure backend services:
 
