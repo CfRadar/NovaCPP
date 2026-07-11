@@ -4,7 +4,7 @@ project(NovaCPP)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(NovaCPP src/main.cpp src/frontend/App.cpp src/backend/Database.cpp)
+add_executable(NovaCPP src/main.cpp src/frontend/App.cpp src/backend/Database.cpp src/backend/Auth.cpp)
 
 if(WIN32)
     target_link_libraries(NovaCPP ws2_32)

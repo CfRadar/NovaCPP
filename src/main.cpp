@@ -1,5 +1,6 @@
 #include "../novacpp/html.hpp"
 #include "backend/Database.hpp"
+#include "backend/Auth.hpp"
 
 // Forward declare the page functions from frontend/App.cpp
 void renderHomePage(np::NovaBuilder& np);
@@ -10,6 +11,7 @@ int main() {
     
     // 1. Initialize Pure Backend Services
     Database::connect("postgres://nova_admin:secret@localhost:5432/nova_db");
+    Auth::initializeSessions();
     
     // 2. Register SPA UI Routes
     np.route("/", renderHomePage);
