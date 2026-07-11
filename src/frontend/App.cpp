@@ -1,9 +1,30 @@
+/* ============================================================================
+   STARTER TEMPLATE
+   NovaCPP comes with a lot of demo components to show you how it works.
+   If you want to start fresh with a blank canvas, simply DELETE everything 
+   below this block, and UNCOMMENT the code below!
+   
+#include "../../novacpp/html.hpp"
+
+void renderHomePage(np::NovaBuilder& np) {
+    np << R"(
+        <div style="display: flex; height: 100vh; justify-content: center; align-items: center; font-family: sans-serif;">
+            <h1>Hello from NovaCPP!</h1>
+        </div>
+    )";
+}
+
+void renderAboutPage(np::NovaBuilder& np) {
+    np << "<h1>About Page</h1>";
+}
+============================================================================ */
+
 #include <string>
 #include <iostream>
 #include <ctime>
-#include "../novacpp/html.hpp"
-#include "../novacpp/state.hpp"
-#include "../novacpp/fetch.hpp"
+#include "../../novacpp/html.hpp"
+#include "../../novacpp/state.hpp"
+#include "../../novacpp/fetch.hpp"
 
 // ===================================================================
 // STATE MANAGEMENT
@@ -12,7 +33,6 @@
 // ===================================================================
 np::State<int> counter(0);
 np::State<std::string> quote("Click the button to receive wisdom.");
-
 
 // ===================================================================
 // MODULAR COMPONENTS
@@ -122,7 +142,6 @@ public:
     }
 };
 
-
 // Instantiate our components globally
 NavBarComponent navComp;
 ClockComponent clockComp;
@@ -130,10 +149,10 @@ CounterComponent counterComp;
 AdvancedApiComponent apiComp;
 
 // Feature blocks
-FeatureBlock speedFeat("feat-speed", "01", "Blazing Fast", "Compiled C++ backend provides absolute millisecond response times.");
-FeatureBlock spaFeat("feat-spa", "02", "SPA Routing", "Seamless page transitions without any browser reloads or flashing.");
-FeatureBlock stateFeat("feat-state", "03", "Isolated State", "Every user session instantly gets its own thread-local variables.");
-
+FeatureBlock speedFeat("feat-speed", "01", "Blazing Fast Execution", "Ditch JavaScript. Execute business logic at the speed of native C++ RAM, achieving absolute sub-millisecond response times.");
+FeatureBlock spaFeat("feat-spa", "02", "Surgical SPA Routing", "Enjoy seamless, instant page transitions. NovaCPP surgically swaps DOM elements without ever triggering a full browser refresh.");
+FeatureBlock stateFeat("feat-state", "03", "Thread-Local State", "Forget complex session management. Every connected user instantly receives their own isolated, reactive C++ state variables.");
+FeatureBlock monolithFeat("feat-monolith", "04", "Full-Stack Monolith", "Unify your frontend UI and backend logic into a single, latency-free executable binary. Deploy natively to the cloud in seconds.");
 
 // ===================================================================
 // PAGE ROUTING
@@ -195,6 +214,9 @@ void renderHomePage(np::NovaBuilder& np) {
     // ROW 3: Extra Features & API
     np.renderComponent(spaFeat);
     np.renderComponent(stateFeat);
+    np.renderComponent(monolithFeat);
+    
+    // ROW 4: API Test
     np.renderComponent(apiComp);
     
     np << R"(</div>)";
