@@ -32,9 +32,10 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only the OpenSSL runtime (much smaller footprint)
+# Install only the OpenSSL runtime and CA certificates
 RUN apt-get update && apt-get install -y \
     libssl3 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
