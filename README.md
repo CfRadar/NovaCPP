@@ -21,11 +21,13 @@ NovaCPP is a C++ web framework for building responsive user interfaces.
 
 NovaCPP has been designed for gradual adoption from the start, and you can use as little or as much NovaCPP as you need:
 
-* **Quick Start:** Use the integrated build script to instantly compile and run the Live Server locally:
-  ```powershell
-  .\nova build run
+* **Quick Start:** Use the `create-novacpp` CLI tool to instantly bootstrap a new project. Open your terminal and run:
+  ```bash
+  npx create-novacpp@latest my-app
+  cd my-app
+  npm run dev
   ```
-  This command will automatically compile the C++ source code, boot the server, and open `http://localhost:8080` in your default browser.
+  This command will automatically set up the project, compile the C++ source code, boot the server, and open `http://localhost:8080` in your default browser.
 * **Add NovaCPP to an Existing Project:** Integrate the `novacpp/` directory directly into your C++ CMake project as a header-only library.
 
 ---
