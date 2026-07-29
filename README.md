@@ -1,11 +1,15 @@
-# NovaCPP
-
-<p align="left">
-  <a href="https://github.com/CfRadar/NovaCPP/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="NovaCPP license"></a>
-  <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status"></a>
-  <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B17-blue.svg" alt="C++ version"></a>
-  <a href="https://github.com/CfRadar/NovaCPP/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
-</p>
+<div align="center">
+  <img src="src/assets/NovaCPP.png" alt="NovaCPP Framework" width="450" />
+  
+  <h1>NovaCPP</h1>
+  
+  <p>
+    <a href="https://github.com/CfRadar/NovaCPP/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="NovaCPP license"></a>
+    <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status"></a>
+    <a href="#"><img src="https://img.shields.io/badge/language-C%2B%2B17-blue.svg" alt="C++ version"></a>
+    <a href="https://github.com/CfRadar/NovaCPP/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+  </p>
+</div>
 
 NovaCPP is a C++ web framework for building responsive user interfaces.
 
