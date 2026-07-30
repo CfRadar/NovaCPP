@@ -29,7 +29,12 @@ NovaCPP has been designed for gradual adoption from the start, and you can use a
   ```bash
   npx create-novacpp@latest my-app
   cd my-app
-  npm run dev
+  
+  cmake -B build
+
+  .\nova build
+  .\nova run
+  .\nova build run
   ```
   This command will automatically set up the project, compile the C++ source code, boot the server, and open `http://localhost:8080` in your default browser.
 * **Add NovaCPP to an Existing Project:** Integrate the `novacpp/` directory directly into your C++ CMake project as a header-only library.
