@@ -1,7 +1,5 @@
-.agent/
-.agents/
-*.skill.md
-SKILL.md
-Test/
-build/
-
+node_modules
+build
+.git
+.vscode
+render/dist
