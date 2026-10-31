@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src/assets/NovaCPP.png" alt="NovaCPP Framework" width="450" />
+  <img src="https://raw.githubusercontent.com/CfRadar/NovaCPP/main/src/assets/NovaCPP.png" alt="NovaCPP Framework" width="450" />
   
   <h1>NovaCPP</h1>
   
