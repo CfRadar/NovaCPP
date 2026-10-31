@@ -67,12 +67,12 @@ void renderApp(np::NovaBuilder& np) {
 
 Explore the dedicated documentation chapters below on the [Nova Documentation Site](https://nova-documentation.vercel.app/) for complete guides, architecture explanations, and in-depth code examples:
 
-### 🚀 [Getting Started](https://nova-documentation.vercel.app/learn/getting-started/introduction)
+### [Getting Started](https://nova-documentation.vercel.app/learn/getting-started/introduction)
 * [Introduction & Philosophy](https://nova-documentation.vercel.app/learn/getting-started/introduction) — The "No-API" paradigm and core framework pillars.
 * [Installation & Quickstart](https://nova-documentation.vercel.app/learn/getting-started/installation) — Prerequisites, CLI scaffolding, project structure, and production builds.
 * [Interactive Examples](https://nova-documentation.vercel.app/learn/getting-started/interactive-examples) — Walkthrough of the reactive counter, live clock, REST fetch engine, and npm confetti.
 
-### 🎨 [Describing the UI](https://nova-documentation.vercel.app/learn/describing-the-ui)
+### [Describing the UI](https://nova-documentation.vercel.app/learn/describing-the-ui)
 * [Your First Component](https://nova-documentation.vercel.app/learn/describing-the-ui/your-first-component) — Creating and inheriting `np::Component`.
 * [Writing Code in C++](https://nova-documentation.vercel.app/learn/describing-the-ui/writing-code-in-cpp) — Dynamic HTML rendering using standard C++ logic.
 * [Passing Components](https://nova-documentation.vercel.app/learn/describing-the-ui/passing-components) — Passing data and references between components.
@@ -84,7 +84,7 @@ Explore the dedicated documentation chapters below on the [Nova Documentation Si
 * [Theming & 3D Code Flip](https://nova-documentation.vercel.app/learn/describing-the-ui/theming-and-animations) — Light/Dark theme tokens, 1-click switcher, and 3D component inspection cards.
 * [Using npm Packages](https://nova-documentation.vercel.app/learn/describing-the-ui/using-npm-packages) — Pre-bundling npm modules via `esbuild` and browser import maps.
 
-### ⚡ [Understanding the Backend](https://nova-documentation.vercel.app/learn/understanding-the-backend)
+### [Understanding the Backend](https://nova-documentation.vercel.app/learn/understanding-the-backend)
 * [The Monolith Architecture](https://nova-documentation.vercel.app/learn/understanding-the-backend/the-monolith-architecture) — Shared memory space between views and business logic.
 * [Routing & main.cpp](https://nova-documentation.vercel.app/learn/understanding-the-backend/routing-and-main) — Setting up SPA routes and booting the HTTP server.
 * [Server-Side State](https://nova-documentation.vercel.app/learn/understanding-the-backend/server-side-state) — Multi-session isolation via `nova_session` cookies.
@@ -94,7 +94,7 @@ Explore the dedicated documentation chapters below on the [Nova Documentation Si
 * [Hot Reloading & Fast Refresh](https://nova-documentation.vercel.app/learn/understanding-the-backend/hot-reloading-and-hmr) — Incremental ~1s C++ compiler and SSE push stream.
 * [Cloud Deployment Guide](https://nova-documentation.vercel.app/learn/understanding-the-backend/cloud-deployment-guide) — Docker multi-stage deployment to Railway, Render, and Fly.io.
 
-### 📖 [API Reference](https://nova-documentation.vercel.app/learn/api-reference/novabuilder)
+### [API Reference](https://nova-documentation.vercel.app/learn/api-reference/novabuilder)
 * [`np::NovaBuilder`](https://nova-documentation.vercel.app/learn/api-reference/novabuilder) — Route registration, event handlers, and server lifecycle.
 * [`np::Component`](https://nova-documentation.vercel.app/learn/api-reference/component) — Base class, constructor ID binding, and virtual `render()`.
 * [`np::State<T>`](https://nova-documentation.vercel.app/learn/api-reference/state) — Thread-safe reactive state variables and operators.
