@@ -11,6 +11,7 @@
     --bg-surface-hover: #FBFBFA;
     --bg-subtle: #F5F5F4;
     --bg-muted: #E7E5E4;
+    --bg-grid-line: rgba(0, 0, 0, 0.035);
     
     /* Borders */
     --border-subtle: #E7E5E4;
@@ -52,6 +53,13 @@
     --badge-red-text: #DC2626;
     --badge-red-border: #FCA5A5;
 
+    /* Code Syntax Colors (Light) */
+    --syn-kw: #7C3AED;
+    --syn-type: #4F46E5;
+    --syn-fn: #0284C7;
+    --syn-str: #059669;
+    --syn-com: #9CA3AF;
+
     /* Subtle Shadows */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.03);
@@ -92,6 +100,7 @@
         --bg-surface-hover: #232630;
         --bg-subtle: #232630;
         --bg-muted: #2E323E;
+        --bg-grid-line: rgba(255, 255, 255, 0.035);
         
         --border-subtle: rgba(255, 255, 255, 0.08);
         --border-medium: rgba(255, 255, 255, 0.14);
@@ -130,6 +139,13 @@
         --badge-red-text: #FCA5A5;
         --badge-red-border: rgba(239, 68, 68, 0.25);
 
+        /* Code Syntax Colors (Dark) */
+        --syn-kw: #C4B5FD;
+        --syn-type: #93C5FD;
+        --syn-fn: #38BDF8;
+        --syn-str: #6EE7B7;
+        --syn-com: #71717A;
+
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
         --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
         --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 28px rgba(0, 0, 0, 0.3);
@@ -143,6 +159,7 @@
     --bg-surface-hover: #232630;
     --bg-subtle: #232630;
     --bg-muted: #2E323E;
+    --bg-grid-line: rgba(255, 255, 255, 0.035);
     
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-medium: rgba(255, 255, 255, 0.14);
@@ -180,6 +197,12 @@
     --badge-red-text: #FCA5A5;
     --badge-red-border: rgba(239, 68, 68, 0.25);
 
+    --syn-kw: #C4B5FD;
+    --syn-type: #93C5FD;
+    --syn-fn: #38BDF8;
+    --syn-str: #6EE7B7;
+    --syn-com: #71717A;
+
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
     --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 28px rgba(0, 0, 0, 0.3);
@@ -192,6 +215,7 @@
     --bg-surface-hover: #FBFBFA;
     --bg-subtle: #F5F5F4;
     --bg-muted: #E7E5E4;
+    --bg-grid-line: rgba(0, 0, 0, 0.035);
     
     --border-subtle: #E7E5E4;
     --border-medium: #D6D3D1;
@@ -229,6 +253,12 @@
     --badge-red-text: #DC2626;
     --badge-red-border: #FCA5A5;
 
+    --syn-kw: #7C3AED;
+    --syn-type: #4F46E5;
+    --syn-fn: #0284C7;
+    --syn-str: #059669;
+    --syn-com: #9CA3AF;
+
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.03);
     --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.04), 0 12px 28px rgba(0, 0, 0, 0.06);
@@ -247,8 +277,13 @@
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background-color: var(--bg-page);
-    background-image: radial-gradient(circle at 50% -80px, rgba(91, 124, 250, 0.05) 0%, transparent 600px);
-    background-repeat: no-repeat;
+    /* Developer Grid Pattern: fills entire viewport width so screen sides feel textured and architectural */
+    background-image: 
+        radial-gradient(ellipse 75% 35% at 50% -50px, rgba(91, 124, 250, 0.07) 0%, transparent 70%),
+        linear-gradient(to right, var(--bg-grid-line) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--bg-grid-line) 1px, transparent 1px);
+    background-size: 100% 100%, 48px 48px, 48px 48px;
+    background-repeat: no-repeat, repeat, repeat;
     color: var(--text-primary);
     min-height: 100vh;
     width: 100%;
@@ -257,7 +292,7 @@ body {
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    padding: var(--space-6) var(--space-4) var(--space-12);
+    padding: var(--space-6) var(--space-6) var(--space-12);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -270,15 +305,31 @@ body {
 }
 
 /* ==========================================================================
-   BENTO GRID LAYOUT (12-Column Responsive System)
+   STAGGERED SLIDING ENTRANCE ANIMATIONS
+   ========================================================================== */
+@keyframes slideUpFade {
+    0% {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==========================================================================
+   BENTO GRID LAYOUT (12-Column Responsive System - Widescreen Enhanced)
    ========================================================================== */
 .bento-grid {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
-    gap: 20px;
+    gap: 22px;
     width: 100%;
-    max-width: 1100px;
+    max-width: 1360px;
     margin: 0 auto;
+    position: relative;
+    z-index: 1;
 }
 
 /* Critical DOM Wrapper Flattening for Surgical Swapping */
@@ -302,6 +353,7 @@ body {
     transition: transform var(--transition-normal), 
                 box-shadow var(--transition-normal), 
                 border-color var(--transition-normal);
+    animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .bento-card:hover {
@@ -310,11 +362,221 @@ body {
     box-shadow: var(--shadow-card-hover);
 }
 
+/* Entrance Animation Stagger Delays (Snappy & Cascading) */
+.navbar-card { animation-delay: 0.02s; }
+.hero-card { animation-delay: 0.05s; }
+#clock-comp .bento-card { animation-delay: 0.08s; }
+#counter-comp .bento-card { animation-delay: 0.11s; }
+#hmr-comp .bento-card { animation-delay: 0.14s; }
+#api-comp .bento-card { animation-delay: 0.17s; }
+#npm-comp .bento-card { animation-delay: 0.20s; }
+#feat-speed .bento-card { animation-delay: 0.23s; }
+#feat-spa .bento-card { animation-delay: 0.26s; }
+#feat-state .bento-card { animation-delay: 0.29s; }
+#feat-monolith .bento-card { animation-delay: 0.32s; }
+
 /* Grid Column Spans */
 .col-12 { grid-column: span 12; }
 .col-8  { grid-column: span 8; }
 .col-6  { grid-column: span 6; }
 .col-4  { grid-column: span 4; }
+
+/* ==========================================================================
+   3D CARD FLIP ARCHITECTURE
+   Enables viewing source C++ implementation code on the reverse face.
+   ========================================================================== */
+.bento-card.flip-card {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    perspective: 1200px;
+}
+
+.bento-card.flip-card:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.flip-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.34, 1.25, 0.64, 1);
+}
+
+.bento-card.flip-card.is-flipped .flip-card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-face {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-start;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.card-face:hover {
+    border-color: var(--border-medium);
+    box-shadow: var(--shadow-card-hover);
+}
+
+.card-front {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 250px;
+    transform: rotateY(0deg);
+}
+
+.card-back {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotateY(180deg);
+    background: var(--bg-surface);
+    overflow: hidden;
+}
+
+/* Card Header Bar (Flip button & Badges) */
+.card-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: var(--space-3);
+    gap: var(--space-2);
+}
+
+.btn-flip {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 500;
+    padding: 3px 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: all var(--transition-fast);
+}
+
+.btn-flip:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background: var(--accent-light);
+}
+
+.btn-flip-back {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: var(--accent-subtle);
+}
+
+.card-body {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* Card Back Code Viewer */
+.code-title-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.badge-lang {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: var(--accent-light);
+    color: var(--accent);
+    letter-spacing: 0.05em;
+}
+
+.card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-copy-code {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    font-weight: 500;
+    padding: 3px 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: all var(--transition-fast);
+}
+
+.btn-copy-code:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface-hover);
+    border-color: var(--border-medium);
+}
+
+.btn-copy-code.copied {
+    color: #10B981 !important;
+    border-color: #10B981 !important;
+}
+
+.code-container {
+    flex: 1;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    text-align: left;
+}
+
+.code-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    color: var(--text-primary);
+}
+
+/* Syntax Highlighting */
+.syn-kw { color: var(--syn-kw); font-weight: 600; }
+.syn-type { color: var(--syn-type); font-weight: 600; }
+.syn-fn { color: var(--syn-fn); }
+.syn-str { color: var(--syn-str); }
+.syn-com { color: var(--syn-com); font-style: italic; }
 
 /* ==========================================================================
    NAVIGATION BAR COMPONENT
@@ -323,7 +585,7 @@ body {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-3) var(--space-5);
+    padding: var(--space-3) var(--space-6);
     border-radius: var(--radius-full);
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
@@ -376,6 +638,48 @@ body {
     background-color: var(--bg-subtle);
 }
 
+.nav-right-cluster {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.theme-toggle-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--radius-full);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    flex: 0 0 32px;
+}
+
+.theme-toggle-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-medium);
+    background: var(--bg-surface-hover);
+}
+
+/* Theme Icon switching */
+.theme-icon-dark { display: none; }
+.theme-icon-light { display: inline; }
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-icon-light { display: none; }
+    :root:not([data-theme="light"]) .theme-icon-dark { display: inline; }
+}
+:root[data-theme="dark"] .theme-icon-light { display: none; }
+:root[data-theme="dark"] .theme-icon-dark { display: inline; }
+:root[data-theme="light"] .theme-icon-light { display: inline; }
+:root[data-theme="light"] .theme-icon-dark { display: none; }
+
 .nav-status-badge {
     font-size: 0.75rem;
     font-weight: 500;
@@ -410,7 +714,7 @@ body {
    HERO SHOWCASE COMPONENT
    ========================================================================== */
 .hero-card {
-    padding: var(--space-8) var(--space-8);
+    padding: var(--space-10) var(--space-8);
     position: relative;
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
@@ -426,7 +730,7 @@ body {
 }
 
 .hero-text-block {
-    max-width: 640px;
+    max-width: 720px;
     text-align: left;
 }
 
@@ -455,7 +759,7 @@ body {
 }
 
 .hero-title {
-    font-size: 3.1rem;
+    font-size: 3.3rem;
     font-weight: 600;
     line-height: 1.15;
     letter-spacing: -0.035em;
@@ -469,7 +773,7 @@ body {
 }
 
 .hero-subtitle {
-    font-size: 1.08rem;
+    font-size: 1.1rem;
     line-height: 1.6;
     color: var(--text-secondary);
     margin-bottom: var(--space-6);
@@ -510,8 +814,8 @@ body {
 }
 
 .hero-logo, .floating-logo {
-    width: 96px;
-    height: 96px;
+    width: 104px;
+    height: 104px;
     border-radius: var(--radius-xl);
     border: 1px solid var(--border-subtle);
     box-shadow: var(--shadow-sm);
@@ -531,7 +835,6 @@ body {
     background: var(--bg-subtle);
     border: 1px solid var(--border-subtle);
     color: var(--text-secondary);
-    margin-bottom: var(--space-3);
     display: inline-flex;
     align-items: center;
     gap: 6px;

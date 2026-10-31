@@ -31,7 +31,12 @@ function setupPolling() {
                         const html = await response.text();
                         const targetEl = document.getElementById(targetId);
                         if (targetEl && targetEl.innerHTML !== html) {
+                            const wasFlipped = targetEl.querySelector('.flip-card.is-flipped') !== null;
                             targetEl.innerHTML = html;
+                            if (wasFlipped) {
+                                const newCard = targetEl.querySelector('.flip-card');
+                                if (newCard) newCard.classList.add('is-flipped');
+                            }
                         }
                     }
                 } catch (error) {
@@ -196,7 +201,12 @@ document.addEventListener('click', async (e) => {
                 if (targetId) {
                     const el = document.getElementById(targetId);
                     if (el) {
+                        const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
                         el.innerHTML = html;
+                        if (wasFlipped) {
+                            const newCard = el.querySelector('.flip-card');
+                            if (newCard) newCard.classList.add('is-flipped');
+                        }
                         setupPolling();
                     } else {
                         console.error('NovaCPP: Target component ' + targetId + ' not found in DOM.');

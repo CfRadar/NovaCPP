@@ -41,10 +41,16 @@ public:
                 <a href="/about" class="nav-link" nova-link>About</a>
                 <a href="https://nova-documentation.vercel.app/" target="_blank" rel="noopener" class="nav-link">Docs &nearr;</a>
             </div>
-            <a href="/about" class="nav-status-badge" nova-link>
-                <span class="status-dot"></span>
-                <span>C++17 Engine &middot; Port 8080</span>
-            </a>
+            <div class="nav-right-cluster">
+                <button type="button" class="theme-toggle-btn" onclick="window.toggleNovaTheme()" title="Toggle Light / Dark mode" aria-label="Toggle theme">
+                    <span class="theme-icon-light">&#9728;</span>
+                    <span class="theme-icon-dark">&#9790;</span>
+                </button>
+                <a href="/about" class="nav-status-badge" nova-link>
+                    <span class="status-dot"></span>
+                    <span>C++17 Engine &middot; Port 8080</span>
+                </a>
+            </div>
         </div>
         )html";
     }
@@ -97,11 +103,48 @@ public:
         std::string timeStr(buffer);
 
         np << R"html(
-        <div class="bento-card col-4">
-            <div class="badge badge-live">LIVE POLLING</div>
-            <div>
-                <div class="counter-val">)html" + timeStr + R"html(</div>
-                <div class="card-desc">This C++ clock updates automatically every 1000ms without WebSockets.</div>
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-live">LIVE POLLING</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="counter-val">)html" + timeStr + R"html(</div>
+                        <div class="card-desc">This C++ clock updates automatically every 1000ms without WebSockets.</div>
+                    </div>
+                </div>
+                <!-- BACK: C++ COMPONENT SOURCE CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>ClockComponent.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Background live polling component</span>
+<span class="syn-kw">class</span> <span class="syn-type">ClockComponent</span> : <span class="syn-kw">public</span> np::Component {
+<span class="syn-kw">public</span>:
+    <span class="syn-type">ClockComponent</span>() : Component(<span class="syn-str">"clock-comp"</span>) {}
+    <span class="syn-kw">void</span> <span class="syn-fn">render</span>(np::NovaBuilder&amp; np) <span class="syn-kw">override</span> {
+        time_t now = time(0);
+        <span class="syn-type">char</span> buf[80];
+        strftime(buf, <span class="syn-kw">sizeof</span>(buf), <span class="syn-str">"%H:%M:%S"</span>, localtime(&amp;now));
+        np &lt;&lt; <span class="syn-str">"&lt;div class='val'&gt;"</span> + std::string(buf) + <span class="syn-str">"&lt;/div&gt;"</span>;
+    }
+};
+<span class="syn-com">// Polled every 1000ms: np.renderComponent(clockComp, 1000);</span></code></pre>
+                    </div>
+                </div>
             </div>
         </div>
         )html";
@@ -114,13 +157,54 @@ public:
     
     void render(np::NovaBuilder& np) override {
         np << R"html(
-        <div class="bento-card col-4">
-            <div class="badge badge-blue">REACTIVE STATE HOOK</div>
-            <div class="counter-val">)html" + std::to_string(counter.get()) + R"html(</div>
-            <p class="card-desc">Server-isolated state stored safely in C++ RAM.</p>
-            <div class="btn-group">
-                <button class="btn-secondary" nova-click="decrement" nova-target="counter-comp">&minus; Decrease</button>
-                <button class="btn-primary" nova-click="increment" nova-target="counter-comp">&plus; Increase</button>
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-blue">REACTIVE STATE HOOK</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="counter-val">)html" + std::to_string(counter.get()) + R"html(</div>
+                        <p class="card-desc">Server-isolated state stored safely in C++ RAM.</p>
+                        <div class="btn-group">
+                            <button class="btn-secondary" nova-click="decrement" nova-target="counter-comp">&minus; Decrease</button>
+                            <button class="btn-primary" nova-click="increment" nova-target="counter-comp">&plus; Increase</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ COMPONENT SOURCE CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>CounterComponent.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Reactive state variable isolated per user session</span>
+np::State&lt;<span class="syn-type">int</span>&gt; counter(0);
+
+<span class="syn-kw">class</span> <span class="syn-type">CounterComponent</span> : <span class="syn-kw">public</span> np::Component {
+<span class="syn-kw">public</span>:
+    <span class="syn-type">CounterComponent</span>() : Component(<span class="syn-str">"counter-comp"</span>) {}
+    <span class="syn-kw">void</span> <span class="syn-fn">render</span>(np::NovaBuilder&amp; np) <span class="syn-kw">override</span> {
+        np &lt;&lt; <span class="syn-str">"&lt;div&gt;"</span> + std::to_string(counter.get()) + <span class="syn-str">"&lt;/div&gt;"</span>;
+    }
+};
+
+<span class="syn-com">// Event bindings with surgical DOM replacement</span>
+np.onClick(<span class="syn-str">"increment"</span>, []() { counter = counter + 1; });
+np.onClick(<span class="syn-str">"decrement"</span>, []() { counter = counter - 1; });</code></pre>
+                    </div>
+                </div>
             </div>
         </div>
         )html";
@@ -133,19 +217,56 @@ public:
 
     void render(np::NovaBuilder& np) override {
         np << R"html(
-        <div class="bento-card col-4">
-            <div class="badge badge-lavender">
-                FAST REFRESH HMR
-            </div>
-            <h3 class="card-title">Instant Hot Reloading</h3>
-            <p class="card-desc">
-                Edit <code>src/frontend/App.cpp</code> and press <kbd>Ctrl+S</kbd>. 
-                NovaCPP re-renders in ~1s without resetting your counter state!
-            </p>
-            <div class="btn-group">
-                <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
-                    Test npm Module &#127881;
-                </button>
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-lavender">FAST REFRESH HMR</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Instant Hot Reloading</h3>
+                        <p class="card-desc">
+                            Edit <code>src/frontend/App.cpp</code> and press <kbd>Ctrl+S</kbd>. 
+                            NovaCPP re-renders in ~1s without resetting your counter state!
+                        </p>
+                        <div class="btn-group">
+                            <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
+                                Test npm Module &#127881;
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ COMPONENT SOURCE CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>FastRefresh.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Fast Refresh HMR Server Architecture</span>
+<span class="syn-com">// 1. OS-level watcher detects file save in src/</span>
+<span class="syn-com">// 2. Fast incremental build via MSVC / Clang (~1s)</span>
+<span class="syn-com">// 3. Server sends SSE event: 'component-update'</span>
+<span class="syn-com">// 4. Client surgically swaps DOM element without state loss</span>
+<span class="syn-kw">class</span> <span class="syn-type">FastRefreshCard</span> : <span class="syn-kw">public</span> np::Component {
+<span class="syn-kw">public</span>:
+    <span class="syn-type">FastRefreshCard</span>() : Component(<span class="syn-str">"hmr-comp"</span>) {}
+    <span class="syn-kw">void</span> <span class="syn-fn">render</span>(np::NovaBuilder&amp; np) <span class="syn-kw">override</span> {
+        np &lt;&lt; <span class="syn-str">"&lt;h3&gt;Instant Hot Reloading&lt;/h3&gt;"</span>;
+    }
+};</code></pre>
+                    </div>
+                </div>
             </div>
         </div>
         )html";
@@ -158,19 +279,54 @@ public:
 
     void render(np::NovaBuilder& np) override {
         np << R"html(
-        <div class="bento-card col-6">
-            <div class="badge badge-blue">
-                REST CLIENT
-            </div>
-            <h3 class="card-title">Native np::fetch Engine</h3>
-            <div class="quote-box">
-                <div class="quote-text">)html" + quote.get() + R"html(</div>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; width: 100%;">
-                <button class="btn-secondary" nova-click="apiGet" nova-target="api-comp">GET</button>
-                <button class="btn-primary" nova-click="apiPost" nova-target="api-comp">POST</button>
-                <button class="btn-secondary" nova-click="apiPut" nova-target="api-comp">PUT</button>
-                <button class="btn-destructive" nova-click="apiDelete" nova-target="api-comp">DEL</button>
+        <div class="bento-card col-6 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-blue">REST CLIENT</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Native np::fetch Engine</h3>
+                        <div class="quote-box">
+                            <div class="quote-text">)html" + quote.get() + R"html(</div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; width: 100%;">
+                            <button class="btn-secondary" nova-click="apiGet" nova-target="api-comp">GET</button>
+                            <button class="btn-primary" nova-click="apiPost" nova-target="api-comp">POST</button>
+                            <button class="btn-secondary" nova-click="apiPut" nova-target="api-comp">PUT</button>
+                            <button class="btn-destructive" nova-click="apiDelete" nova-target="api-comp">DEL</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ COMPONENT SOURCE CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>FetchEngine.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Synchronous outbound REST client via WinHTTP / OpenSSL</span>
+np.onClick(<span class="syn-str">"apiGet"</span>, []() {
+    quote = np::fetch(<span class="syn-str">"https://jsonplaceholder.typicode.com/posts/1"</span>, <span class="syn-str">"GET"</span>);
+});
+
+np.onClick(<span class="syn-str">"apiPost"</span>, []() {
+    <span class="syn-type">std::string</span> body = R"({"title":"NovaCPP","userId":1})";
+    <span class="syn-type">std::string</span> headers = <span class="syn-str">"Content-Type: application/json\r\n"</span>;
+    quote = np::fetch(<span class="syn-str">"https://jsonplaceholder.typicode.com/posts"</span>, <span class="syn-str">"POST"</span>, body, headers);
+});</code></pre>
+                    </div>
+                </div>
             </div>
         </div>
         )html";
@@ -183,26 +339,62 @@ public:
 
     void render(np::NovaBuilder& np) override {
         np << R"html(
-        <div class="bento-card col-6">
-            <div class="badge badge-peach">
-                NATIVE NPM COMPATIBILITY
-            </div>
-            <h3 class="card-title">Pre-Bundled Browser Modules</h3>
-            <p class="card-desc">
-                Standard <code>npm i &lt;pkg&gt;</code> packages pre-bundled into ESM in ~40ms. 
-                Import bare specifiers directly in <code>render/app.js</code> via browser import maps!
-            </p>
-            <div class="btn-group">
-                <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
-                    Burst Confetti Particles &#127881;
-                </button>
+        <div class="bento-card col-6 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-peach">NATIVE NPM COMPATIBILITY</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Pre-Bundled Browser Modules</h3>
+                        <p class="card-desc">
+                            Standard <code>npm i &lt;pkg&gt;</code> packages pre-bundled into ESM in ~40ms. 
+                            Import bare specifiers directly in <code>render/app.js</code> via browser import maps!
+                        </p>
+                        <div class="btn-group">
+                            <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
+                                Burst Confetti Particles &#127881;
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ COMPONENT SOURCE CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">ESM</span>
+                            <span>render/app.js</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Direct bare specifier ESM imports via Import Map</span>
+<span class="syn-kw">import</span> confetti <span class="syn-kw">from</span> <span class="syn-str">'canvas-confetti'</span>;
+<span class="syn-kw">import</span> dayjs <span class="syn-kw">from</span> <span class="syn-str">'dayjs'</span>;
+
+window.<span class="syn-fn">triggerNovaConfetti</span> = () =&gt; {
+    confetti({
+        particleCount: 80,
+        spread: 70,
+        colors: [<span class="syn-str">'#5B7CFA'</span>, <span class="syn-str">'#93C5FD'</span>, <span class="syn-str">'#A7F3D0'</span>, <span class="syn-str">'#DDD6FE'</span>]
+    });
+};</code></pre>
+                    </div>
+                </div>
             </div>
         </div>
         )html";
     }
 };
 
-// Reusable Info Block Component
+// Reusable Info Block Component with Code Flip
 class FeatureBlock : public np::Component {
 private:
     std::string number;
@@ -214,12 +406,48 @@ public:
     
     void render(np::NovaBuilder& np) override {
         np << R"html(
-        <div class="bento-card col-6 feature-card">
-            <div class="feature-header">
-                <span class="feature-number">)html" + number + R"html(</span>
-                <h3 class="card-title">)html" + title + R"html(</h3>
+        <div class="bento-card col-6 flip-card feature-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="feature-header">
+                            <span class="feature-number">)html" + number + R"html(</span>
+                            <h3 class="card-title">)html" + title + R"html(</h3>
+                        </div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-desc">)html" + desc + R"html(</p>
+                    </div>
+                </div>
+                <!-- BACK: C++ COMPONENT SOURCE CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>FeatureBlock.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-kw">class</span> <span class="syn-type">FeatureBlock</span> : <span class="syn-kw">public</span> np::Component {
+    <span class="syn-type">std::string</span> num, title, desc;
+<span class="syn-kw">public</span>:
+    <span class="syn-type">FeatureBlock</span>(<span class="syn-type">string</span> id, <span class="syn-type">string</span> n, <span class="syn-type">string</span> t, <span class="syn-type">string</span> d) 
+        : Component(id), num(n), title(t), desc(d) {}
+    <span class="syn-kw">void</span> <span class="syn-fn">render</span>(np::NovaBuilder&amp; np) <span class="syn-kw">override</span> {
+        np &lt;&lt; <span class="syn-str">"&lt;h3&gt;"</span> + title + <span class="syn-str">"&lt;/h3&gt;&lt;p&gt;"</span> + desc + <span class="syn-str">"&lt;/p&gt;"</span>;
+    }
+};</code></pre>
+                    </div>
+                </div>
             </div>
-            <p class="card-desc">)html" + desc + R"html(</p>
         </div>
         )html";
     }
