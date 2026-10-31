@@ -1,0 +1,7 @@
+.agent/
+.agents/
+*.skill.md
+SKILL.md
+Test/
+build/
+

@@ -4,6 +4,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <random>
 #include <string>
 #include <vector>
@@ -64,7 +65,9 @@ private:
   std::map<std::string, Component *> components; // Map of registered components
   std::map<std::string, std::function<void(NovaBuilder &)>>
       routes;                     // Registered pages
-  std::string current_path = "/"; // Tracks the user's current SPA route
+  std::string current_path = "/"; // Tracks fallback current SPA route
+  std::map<std::string, std::string> session_current_paths; // Tracks active path per session
+  std::mutex builder_mutex;       // Guards concurrent rendering and route state
 
 public:
   void clear() {
@@ -160,6 +163,9 @@ public:
   // Starts the Live Server
   void listen(int port) {
 
+    // Mount static asset directories
+    svr.set_mount_point("/assets", "./src/assets");
+
     // Serve static CSS file with strict MIME type
     svr.Get("/styles.css",
             [](const httplib::Request &req, httplib::Response &res) {
@@ -197,13 +203,28 @@ public:
       }
     });
 
+    // Serve framework branding logo directly
+    svr.Get("/NovaCPP.png", [](const httplib::Request &req, httplib::Response &res) {
+      std::ifstream ifs("./src/assets/NovaCPP.png", std::ios::binary);
+      if (ifs) {
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                            std::istreambuf_iterator<char>());
+        res.set_content(content, "image/png");
+      } else {
+        res.status = 404;
+      }
+    });
+
     // SPA Navigation Route (React Router style fast swap)
     svr.Post("/nova/navigate",
              [&](const httplib::Request &req, httplib::Response &res) {
                this->initializeSessionContext(req, res);
                std::string path = req.get_header_value("X-Nova-Path");
+               std::string sid = np::Context::current_session_id;
 
                if (routes.find(path) != routes.end()) {
+                 std::lock_guard<std::mutex> lock(this->builder_mutex);
+                 this->session_current_paths[sid] = path;
                  this->current_path = path;
                  this->clear();
 
@@ -241,10 +262,15 @@ public:
         components[targetId]->render(partialBuilder);
         res.set_content(partialBuilder.generateHTML(false), "text/html");
       } else {
-        // FULL RENDER: Re-render the current route
+        // FULL RENDER: Re-render the current route for this specific session
+        std::lock_guard<std::mutex> lock(this->builder_mutex);
+        std::string sid = np::Context::current_session_id;
+        std::string active_path = this->session_current_paths.count(sid)
+                                      ? this->session_current_paths[sid]
+                                      : this->current_path;
         this->clear();
-        if (routes.find(this->current_path) != routes.end()) {
-          routes[this->current_path](*this);
+        if (routes.find(active_path) != routes.end()) {
+          routes[active_path](*this);
         }
         res.set_content(this->generateHTML(false), "text/html");
       }
@@ -272,10 +298,14 @@ public:
       std::string path = req.path;
 
       // Ignore static assets that slipped through
-      if (path == "/styles.css" || path == "/nova.js" || path == "/app.js")
+      if (path == "/styles.css" || path == "/nova.js" || path == "/app.js" ||
+          path == "/NovaCPP.png" || path.rfind("/assets/", 0) == 0)
         return;
 
       if (routes.find(path) != routes.end()) {
+        std::lock_guard<std::mutex> lock(this->builder_mutex);
+        std::string sid = np::Context::current_session_id;
+        this->session_current_paths[sid] = path;
         this->current_path = path;
         this->initializeSessionContext(req, res);
 
