@@ -1,23 +1,8 @@
 /* ============================================================================
-   STARTER TEMPLATE
-   NovaCPP comes with a lot of demo components to show you how it works.
-   If you want to start fresh with a blank canvas, simply DELETE everything 
-   below this block, and UNCOMMENT the code below!
-   
-#include "../../novacpp/html.hpp"
-
-void renderHomePage(np::NovaBuilder& np) {
-    np << R"(
-        <div style="display: flex; height: 100vh; justify-content: center; align-items: center; font-family: sans-serif;">
-            <h1>Hello from NovaCPP!</h1>
-        </div>
-    )";
-}
-
-void renderAboutPage(np::NovaBuilder& np) {
-    np << "<h1>About Page</h1>";
-}
-============================================================================ */
+   NOVACPP STARTER TEMPLATE
+   A blazing-fast, reactive full-stack C++ web framework.
+   Combines the DX of React with the raw speed of native C++.
+   ============================================================================ */
 
 #include <string>
 #include <iostream>
@@ -27,18 +12,17 @@ void renderAboutPage(np::NovaBuilder& np) {
 #include "../../novacpp/fetch.hpp"
 
 // ===================================================================
-// STATE MANAGEMENT
-// `np::State` creates reactive variables. NovaCPP automatically isolates 
-// these variables for every user connected to the server.
+// REACTIVE STATE MANAGEMENT
+// `np::State<T>` creates thread-safe reactive variables. NovaCPP 
+// automatically isolates these variables for each user session.
 // ===================================================================
 np::State<int> counter(0);
-np::State<std::string> quote("Click the button to receive wisdom.");
+np::State<std::string> quote("Click any REST API button below to test network latency.");
 
 // ===================================================================
 // MODULAR COMPONENTS
-// By inheriting from `np::Component`, you can split your UI into small, 
-// independent pieces. When state changes, NovaCPP will surgically 
-// update ONLY the component that needs to change, exactly like React!
+// Inheriting from `np::Component` encapsulates UI markup and logic.
+// Surgical DOM updates swap ONLY the targeted element, just like React!
 // ===================================================================
 
 class NavBarComponent : public np::Component {
@@ -46,13 +30,58 @@ public:
     NavBarComponent() : Component("navbar-comp") {}
 
     void render(np::NovaBuilder& np) override {
-        np << R"(
+        np << R"html(
         <div class="bento-card col-12 navbar-card">
-            <a href="/" class="nav-link" nova-link>Home</a>
-            <a href="/about" class="nav-link" nova-link>About</a>
-            <div style="margin-left: auto; font-size: 0.8rem; color: #86868b; font-weight: 600; letter-spacing: 1px;">NOVACPP ENGINE</div>
+            <a href="/" class="brand-wrapper" nova-link>
+                <img src="/NovaCPP.png" alt="NovaCPP" class="brand-logo-img">
+                <span class="brand-title">NovaCPP</span>
+            </a>
+            <div class="nav-links">
+                <a href="/" class="nav-link" nova-link>Home</a>
+                <a href="/about" class="nav-link" nova-link>About</a>
+                <a href="https://nova-documentation.vercel.app/" target="_blank" rel="noopener" class="nav-link">Docs &nearr;</a>
+            </div>
+            <a href="/about" class="nav-status-badge" nova-link>
+                <span class="status-dot"></span>
+                <span>C++17 Engine &middot; Port 8080</span>
+            </a>
         </div>
-        )";
+        )html";
+    }
+};
+
+class HeroComponent : public np::Component {
+public:
+    HeroComponent() : Component("hero-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-12 hero-card">
+            <div class="hero-content">
+                <div class="hero-text-block">
+                    <div class="hero-badge-tag">FULL-STACK C++ MONOLITH</div>
+                    <h1 class="hero-title">
+                        Build Real-Time Web Apps with <span class="accent-text">C++ Speed &amp; React DX</span>
+                    </h1>
+                    <p class="hero-subtitle">
+                        Zero API latency. Thread-local reactive state. Instant Fast Refresh hot reloading. 
+                        Native npm packages pre-bundled via esbuild in milliseconds.
+                    </p>
+                    <div class="hero-actions">
+                        <div class="hero-code-chip">
+                            <span class="mono-prompt">$</span> npm run dev
+                        </div>
+                        <button class="btn-primary btn-confetti" onclick="window.triggerNovaConfetti()">
+                            Launch Confetti &rarr;
+                        </button>
+                    </div>
+                </div>
+                <div class="hero-logo-wrapper">
+                    <img src="/NovaCPP.png" alt="NovaCPP Framework" class="hero-logo">
+                </div>
+            </div>
+        </div>
+        )html";
     }
 };
 
@@ -67,15 +96,15 @@ public:
         strftime(buffer, sizeof(buffer), "%H:%M:%S", ltm);
         std::string timeStr(buffer);
 
-        np << R"(
+        np << R"html(
         <div class="bento-card col-4">
             <div class="badge badge-live">LIVE POLLING</div>
             <div>
-                <div class="counter-val">)" + timeStr + R"(</div>
-                <div class="card-desc">This C++ clock updates automatically without WebSockets.</div>
+                <div class="counter-val">)html" + timeStr + R"html(</div>
+                <div class="card-desc">This C++ clock updates automatically every 1000ms without WebSockets.</div>
             </div>
         </div>
-        )";
+        )html";
     }
 };
 
@@ -84,16 +113,42 @@ public:
     CounterComponent() : Component("counter-comp") {}
     
     void render(np::NovaBuilder& np) override {
-        np << R"(
+        np << R"html(
         <div class="bento-card col-4">
-            <div class="badge">STATE HOOK</div>
-            <div class="counter-val">)" + std::to_string(counter.get()) + R"(</div>
+            <div class="badge badge-blue">REACTIVE STATE HOOK</div>
+            <div class="counter-val">)html" + std::to_string(counter.get()) + R"html(</div>
+            <p class="card-desc">Server-isolated state stored safely in C++ RAM.</p>
             <div class="btn-group">
-                <button class="btn-secondary" nova-click="decrement" nova-target="counter-comp">- Decrease</button>
-                <button class="btn-primary" nova-click="increment" nova-target="counter-comp">+ Increase</button>
+                <button class="btn-secondary" nova-click="decrement" nova-target="counter-comp">&minus; Decrease</button>
+                <button class="btn-primary" nova-click="increment" nova-target="counter-comp">&plus; Increase</button>
             </div>
         </div>
-        )";
+        )html";
+    }
+};
+
+class FastRefreshCard : public np::Component {
+public:
+    FastRefreshCard() : Component("hmr-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-4">
+            <div class="badge badge-lavender">
+                FAST REFRESH HMR
+            </div>
+            <h3 class="card-title">Instant Hot Reloading</h3>
+            <p class="card-desc">
+                Edit <code>src/frontend/App.cpp</code> and press <kbd>Ctrl+S</kbd>. 
+                NovaCPP re-renders in ~1s without resetting your counter state!
+            </p>
+            <div class="btn-group">
+                <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
+                    Test npm Module &#127881;
+                </button>
+            </div>
+        </div>
+        )html";
     }
 };
 
@@ -102,24 +157,52 @@ public:
     AdvancedApiComponent() : Component("api-comp") {}
 
     void render(np::NovaBuilder& np) override {
-        np << R"(
-        <div class="bento-card col-4">
-            <div class="badge">ADVANCED REST API TEST</div>
-            <div class="quote-box" style="margin-bottom: 0.8rem; height: 100px;">
-                <div class="quote-text" style="-webkit-line-clamp: 4;">)" + quote.get() + R"(</div>
+        np << R"html(
+        <div class="bento-card col-6">
+            <div class="badge badge-blue">
+                REST CLIENT
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; width: 100%;">
+            <h3 class="card-title">Native np::fetch Engine</h3>
+            <div class="quote-box">
+                <div class="quote-text">)html" + quote.get() + R"html(</div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; width: 100%;">
                 <button class="btn-secondary" nova-click="apiGet" nova-target="api-comp">GET</button>
                 <button class="btn-primary" nova-click="apiPost" nova-target="api-comp">POST</button>
                 <button class="btn-secondary" nova-click="apiPut" nova-target="api-comp">PUT</button>
-                <button class="btn-primary" style="background: #ff3b30;" nova-click="apiDelete" nova-target="api-comp">DELETE</button>
+                <button class="btn-destructive" nova-click="apiDelete" nova-target="api-comp">DEL</button>
             </div>
         </div>
-        )";
+        )html";
     }
 };
 
-// Reusable Info Block Component (No Emojis, Clean Typography)
+class NpmShowcaseComponent : public np::Component {
+public:
+    NpmShowcaseComponent() : Component("npm-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-6">
+            <div class="badge badge-peach">
+                NATIVE NPM COMPATIBILITY
+            </div>
+            <h3 class="card-title">Pre-Bundled Browser Modules</h3>
+            <p class="card-desc">
+                Standard <code>npm i &lt;pkg&gt;</code> packages pre-bundled into ESM in ~40ms. 
+                Import bare specifiers directly in <code>render/app.js</code> via browser import maps!
+            </p>
+            <div class="btn-group">
+                <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
+                    Burst Confetti Particles &#127881;
+                </button>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+// Reusable Info Block Component
 class FeatureBlock : public np::Component {
 private:
     std::string number;
@@ -130,29 +213,32 @@ public:
         : Component(id), number(number), title(title), desc(desc) {}
     
     void render(np::NovaBuilder& np) override {
-        np << R"(
-        <div class="bento-card col-4">
-            <div class="feature-number">)" + number + R"(</div>
-            <div>
-                <h3 class="card-title">)" + title + R"(</h3>
-                <p class="card-desc">)" + desc + R"(</p>
+        np << R"html(
+        <div class="bento-card col-6 feature-card">
+            <div class="feature-header">
+                <span class="feature-number">)html" + number + R"html(</span>
+                <h3 class="card-title">)html" + title + R"html(</h3>
             </div>
+            <p class="card-desc">)html" + desc + R"html(</p>
         </div>
-        )";
+        )html";
     }
 };
 
 // Instantiate our components globally
 NavBarComponent navComp;
+HeroComponent heroComp;
 ClockComponent clockComp;
 CounterComponent counterComp;
+FastRefreshCard hmrComp;
 AdvancedApiComponent apiComp;
+NpmShowcaseComponent npmComp;
 
 // Feature blocks
-FeatureBlock speedFeat("feat-speed", "01", "Blazing Fast Execution", "Ditch JavaScript. Execute business logic at the speed of native C++ RAM, achieving absolute sub-millisecond response times.");
-FeatureBlock spaFeat("feat-spa", "02", "Surgical SPA Routing", "Enjoy seamless, instant page transitions. NovaCPP surgically swaps DOM elements without ever triggering a full browser refresh.");
-FeatureBlock stateFeat("feat-state", "03", "Thread-Local State", "Forget complex session management. Every connected user instantly receives their own isolated, reactive C++ state variables.");
-FeatureBlock monolithFeat("feat-monolith", "04", "Full-Stack Monolith", "Unify your frontend UI and backend logic into a single, latency-free executable binary. Deploy natively to the cloud in seconds.");
+FeatureBlock speedFeat("feat-speed", "01", "Sub-Millisecond RAM Speed", "Ditch slow Node.js serialization. Execute frontend logic at native C++ memory speed.");
+FeatureBlock spaFeat("feat-spa", "02", "Surgical SPA Navigation", "Seamless transitions. NovaCPP surgically updates only changed DOM elements with zero full page reloads.");
+FeatureBlock stateFeat("feat-state", "03", "Thread-Local State Isolation", "Every user receives an isolated, thread-safe session copy of all reactive np::State variables.");
+FeatureBlock monolithFeat("feat-monolith", "04", "Full-Stack Single Binary", "Frontend UI, REST clients, and backend services compile into a single deployable native binary.");
 
 // ===================================================================
 // PAGE ROUTING
@@ -165,8 +251,13 @@ void renderHomePage(np::NovaBuilder& np) {
         quote = "Select a REST API method to test network connectivity.";
     });
 
-    np.onClick("increment", []() { counter = counter + 1; });
-    np.onClick("decrement", []() { counter = counter - 1; });
+    np.onClick("increment", []() { 
+        counter = counter + 1; 
+    });
+    
+    np.onClick("decrement", []() { 
+        counter = counter - 1; 
+    });
 
     np.onClick("apiGet", []() {
         quote = "Fetching GET...";
@@ -200,26 +291,31 @@ void renderHomePage(np::NovaBuilder& np) {
         else quote = "DELETE Failed! Response: " + res;
     });
 
-    // Render the Home Page Layout (12-Column Grid)
-    np << R"(<div class="bento-grid">)";
+    // Render the Home Page Layout (12-Column Responsive Bento Grid)
+    np << R"html(<div class="bento-grid">)html";
     
     // ROW 1: Navigation
     np.renderComponent(navComp);
     
-    // ROW 2: Interactive Components
+    // ROW 2: Hero Showcase
+    np.renderComponent(heroComp);
+
+    // ROW 3: Interactive Reactive Components
     np.renderComponent(clockComp, 1000); 
     np.renderComponent(counterComp);
-    np.renderComponent(speedFeat);
+    np.renderComponent(hmrComp);
+
+    // ROW 4: API & npm Capabilities
+    np.renderComponent(apiComp);
+    np.renderComponent(npmComp);
     
-    // ROW 3: Extra Features & API
+    // ROW 5: Architectural Features
+    np.renderComponent(speedFeat);
     np.renderComponent(spaFeat);
     np.renderComponent(stateFeat);
     np.renderComponent(monolithFeat);
     
-    // ROW 4: API Test
-    np.renderComponent(apiComp);
-    
-    np << R"(</div>)";
+    np << R"html(</div>)html";
 }
 
 class AboutComponent : public np::Component {
@@ -227,26 +323,35 @@ public:
     AboutComponent() : Component("about-comp") {}
     
     void render(np::NovaBuilder& np) override {
-        np << R"(
-        <div class="bento-card col-12 row-2" style="padding: 4rem; justify-content: center; align-items: center; text-align: center;">
-            <h1 style="font-size: 3.5rem; margin-bottom: 1.5rem; color: #1d1d1f; letter-spacing: -1.5px; font-weight: 800;">About NovaCPP</h1>
-            <p style="font-size: 1.25rem; line-height: 1.8; color: #86868b; max-width: 800px; margin-bottom: 1.5rem;">
-                NovaCPP is an incredibly fast, highly optimized C++ web framework designed to bring the developer experience of React straight to the backend.
+        np << R"html(
+        <div class="bento-card col-12 about-hero-card">
+            <h1 class="about-title">About NovaCPP</h1>
+            <p class="about-desc">
+                NovaCPP is an ultra-fast, modern C++ web framework engineered to deliver the developer experience 
+                of React straight to the backend. It completely eliminates the need for Node.js at runtime, 
+                allowing you to build reactive Single Page Applications (SPAs) purely in native C++.
             </p>
-            <p style="font-size: 1.25rem; line-height: 1.8; color: #86868b; max-width: 800px;">
-                It completely eliminates the need for Node.js or JavaScript, allowing you to build real-time Single Page Applications (SPAs) purely in C++. Features include <strong style="color: #1d1d1f;">Surgical Routing</strong>, <strong style="color: #1d1d1f;">Automatic Live Polling</strong>, and <strong style="color: #1d1d1f;">Reactive State Management</strong>.
+            <p class="about-desc">
+                Key architectural pillars include <strong>Surgical DOM Swapping</strong>, 
+                <strong>Automatic Live Polling</strong>, 
+                <strong>Thread-Local Session State</strong>, and 
+                <strong>Native npm Package Compatibility</strong> via esbuild import maps.
             </p>
+            <div style="margin-top: 1.5rem;">
+                <a href="/" class="btn-primary" style="text-decoration: none; padding: 0.75rem 1.6rem; display: inline-flex;" nova-link>
+                    &larr; Back to Home
+                </a>
+            </div>
         </div>
-        )";
+        )html";
     }
 };
 
 AboutComponent aboutComp;
 
 void renderAboutPage(np::NovaBuilder& np) {
-    
-    np << R"(<div class="bento-grid">)";
+    np << R"html(<div class="bento-grid">)html";
     np.renderComponent(navComp);
     np.renderComponent(aboutComp);
-    np << R"(</div>)";
+    np << R"html(</div>)html";
 }

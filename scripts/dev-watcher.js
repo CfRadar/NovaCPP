@@ -194,7 +194,19 @@ async function handleFileChange(filepath) {
     const basename = path.basename(filepath);
 
     // Ignore build output and temp files
-    if (filepath.includes('build') || filepath.includes('.git') || filepath.includes('.vscode')) {
+    if (filepath.includes('build') || filepath.includes('.git') || filepath.includes('.vscode') || filepath.includes('node_modules')) {
+        return;
+    }
+
+    // 0. npm package dependencies changed
+    if (basename === 'package.json') {
+        log('VENDOR', 'package.json changed -> Re-bundling vendor modules...', CYAN);
+        try {
+            execSync('node scripts/bundle-vendor.js', { cwd: ROOT_DIR, stdio: 'inherit' });
+            await broadcastHMREvent('reload', { file: basename, timestamp: Date.now() });
+        } catch (e) {
+            log('VENDOR', 'Vendor bundle error: ' + e.message, RED);
+        }
         return;
     }
 
@@ -276,16 +288,32 @@ if (!fs.existsSync(path.join(ROOT_DIR, 'build', 'CMakeCache.txt'))) {
     execSync('cmake -B build', { cwd: ROOT_DIR, stdio: 'inherit' });
 }
 
+// Pre-bundle any declared vendor packages before starting server
+try {
+    execSync('node scripts/bundle-vendor.js', { cwd: ROOT_DIR, stdio: 'inherit' });
+} catch (e) {}
+
 // Start initial build & server
 if (runBuild()) {
     startServer();
 }
 
-// Watch src and render folders
-log('WATCH', 'Watching for changes in src/ and render/...', CYAN);
+// Watch src, render, novacpp folders and package.json
+log('WATCH', 'Watching for changes in src/, render/, novacpp/, and package.json...', CYAN);
 watchDirectory(path.join(ROOT_DIR, 'src'));
 watchDirectory(path.join(ROOT_DIR, 'render'));
 watchDirectory(path.join(ROOT_DIR, 'novacpp'));
+
+// Watch root package.json
+const rootPkg = path.join(ROOT_DIR, 'package.json');
+if (fs.existsSync(rootPkg)) {
+    fs.watch(rootPkg, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            handleFileChange(rootPkg);
+        }, 100);
+    });
+}
 
 // Clean shutdown on Ctrl+C
 process.on('SIGINT', async () => {

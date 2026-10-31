@@ -2,6 +2,9 @@
 if not exist build\CMakeCache.txt (
     cmake -B build
 )
+if exist scripts\bundle-vendor.js (
+    node scripts\bundle-vendor.js
+)
 if "%1"=="dev" (
     node scripts\dev-watcher.js
 ) else if "%1"=="watch" (

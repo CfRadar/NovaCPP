@@ -158,6 +158,18 @@ public:
       out += "    <title>NovaCPP App</title>\n";
       out += "    <link rel=\"stylesheet\" href=\"styles.css" + cache_buster +
              "\">\n";
+
+      // Inject browser import map if available
+      std::ifstream im_ifs("./render/dist/importmap.json");
+      if (im_ifs) {
+        std::string im_content((std::istreambuf_iterator<char>(im_ifs)),
+                               std::istreambuf_iterator<char>());
+        if (im_content.find("\"imports\": {") != std::string::npos &&
+            im_content.find("\"imports\": {}") == std::string::npos) {
+          out += "    <script type=\"importmap\">\n" + im_content + "\n    </script>\n";
+        }
+      }
+
       out += "</head>\n<body>\n";
       out += "    <div id=\"root\">\n";
     }
@@ -170,7 +182,7 @@ public:
       std::string cache_buster = "?v=" + std::to_string(time(nullptr));
       out += "    </div>\n";
       out += "    <script src=\"nova.js" + cache_buster + "\"></script>\n";
-      out += "    <script src=\"app.js" + cache_buster + "\"></script>\n";
+      out += "    <script type=\"module\" src=\"app.js" + cache_buster + "\"></script>\n";
       out += "</body>\n</html>\n";
     }
     return out;
@@ -240,6 +252,33 @@ public:
         std::string content((std::istreambuf_iterator<char>(ifs)),
                             std::istreambuf_iterator<char>());
         res.set_content(content, "image/png");
+      } else {
+        res.status = 404;
+      }
+    });
+
+    // Serve pre-bundled vendor dependencies (/dist/*) with strict security and MIME types
+    svr.Get(R"(/dist/(.*))", [](const httplib::Request &req, httplib::Response &res) {
+      std::string subpath = req.matches[1];
+      if (subpath.find("..") != std::string::npos || subpath.find('\\') != std::string::npos) {
+        res.status = 403;
+        return;
+      }
+      std::string full_path = "./render/dist/" + subpath;
+      std::ifstream ifs(full_path, std::ios::binary);
+      if (ifs) {
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                            std::istreambuf_iterator<char>());
+        if (subpath.rfind(".js") == subpath.length() - 3) {
+          res.set_content(content, "application/javascript");
+        } else if (subpath.rfind(".css") == subpath.length() - 4) {
+          res.set_content(content, "text/css");
+        } else if (subpath.rfind(".json") == subpath.length() - 5 ||
+                   subpath.rfind(".map") == subpath.length() - 4) {
+          res.set_content(content, "application/json");
+        } else {
+          res.set_content(content, "application/octet-stream");
+        }
       } else {
         res.status = 404;
       }
@@ -417,7 +456,8 @@ public:
 
       // Ignore static assets that slipped through
       if (path == "/styles.css" || path == "/nova.js" || path == "/app.js" ||
-          path == "/NovaCPP.png" || path.rfind("/assets/", 0) == 0)
+          path == "/NovaCPP.png" || path.rfind("/assets/", 0) == 0 ||
+          path.rfind("/dist/", 0) == 0)
         return;
 
       if (routes.find(path) != routes.end()) {

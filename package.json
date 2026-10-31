@@ -4,7 +4,16 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev-watcher.js",
-    "build": "cmake --build build",
+    "build": "node scripts/bundle-vendor.js && cmake --build build",
+    "bundle": "node scripts/bundle-vendor.js",
+    "postinstall": "node scripts/bundle-vendor.js",
     "start": "nova run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "canvas-confetti": "^1.9.4",
+    "dayjs": "^1.11.23"
   }
 }
