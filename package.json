@@ -1,4 +1,10 @@
 {
   "name": "my-app",
-  "private": true
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-watcher.js",
+    "build": "cmake --build build",
+    "start": "nova run"
+  }
 }

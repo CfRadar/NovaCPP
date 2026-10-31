@@ -5,6 +5,12 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <queue>
+#include <memory>
+#include <condition_variable>
+#include <chrono>
+#include <atomic>
+#include <algorithm>
 #include <random>
 #include <string>
 #include <vector>
@@ -57,6 +63,16 @@ inline std::string getSessionCookie(const httplib::Request &req) {
   return "";
 }
 
+struct HMREvent {
+  std::string event;
+  std::string data;
+};
+
+struct HMRClientQueue {
+  std::mutex q_mtx;
+  std::queue<HMREvent> events;
+};
+
 class NovaBuilder {
 private:
   std::vector<std::string> elements;
@@ -69,7 +85,21 @@ private:
   std::map<std::string, std::string> session_current_paths; // Tracks active path per session
   std::mutex builder_mutex;       // Guards concurrent rendering and route state
 
+  // Real-time HMR Channel members
+  std::mutex hmr_clients_mutex;
+  std::condition_variable hmr_cv;
+  std::vector<std::shared_ptr<HMRClientQueue>> hmr_clients;
+  std::atomic<bool> hmr_active{true};
+
 public:
+  void broadcastHMR(const std::string &event, const std::string &data = "{}") {
+    std::lock_guard<std::mutex> lock(hmr_clients_mutex);
+    for (auto &client : hmr_clients) {
+      std::lock_guard<std::mutex> q_lock(client->q_mtx);
+      client->events.push({event, data});
+    }
+    hmr_cv.notify_all();
+  }
   void clear() {
     elements.clear();
     // We do NOT clear components here so that polling components remain
@@ -215,6 +245,93 @@ public:
       }
     });
 
+    // Server-Sent Events (SSE) Hot Module Replacement Stream
+    svr.Get("/nova/hmr", [&](const httplib::Request &req, httplib::Response &res) {
+      auto client_queue = std::make_shared<HMRClientQueue>();
+      {
+        std::lock_guard<std::mutex> lock(this->hmr_clients_mutex);
+        client_queue->events.push({"connected", "{\"status\":\"ready\"}"});
+        this->hmr_clients.push_back(client_queue);
+      }
+
+      res.set_header("Access-Control-Allow-Origin", "*");
+      res.set_header("Cache-Control", "no-cache");
+      res.set_header("Connection", "keep-alive");
+
+      res.set_chunked_content_provider(
+          "text/event-stream",
+          [this, client_queue](size_t /*offset*/, httplib::DataSink &sink) {
+            if (!sink.is_writable() || !this->hmr_active) {
+              return false;
+            }
+
+            HMREvent next_ev;
+            bool has_event = false;
+
+            {
+              std::unique_lock<std::mutex> lock(this->hmr_clients_mutex);
+              {
+                std::lock_guard<std::mutex> q_lock(client_queue->q_mtx);
+                if (!client_queue->events.empty()) {
+                  next_ev = client_queue->events.front();
+                  client_queue->events.pop();
+                  has_event = true;
+                }
+              }
+
+              if (!has_event) {
+                this->hmr_cv.wait_for(lock, std::chrono::seconds(2), [&]() {
+                  if (!this->hmr_active) return true;
+                  std::lock_guard<std::mutex> q_lock(client_queue->q_mtx);
+                  return !client_queue->events.empty();
+                });
+
+                if (!this->hmr_active || !sink.is_writable()) {
+                  return false;
+                }
+
+                std::lock_guard<std::mutex> q_lock(client_queue->q_mtx);
+                if (!client_queue->events.empty()) {
+                  next_ev = client_queue->events.front();
+                  client_queue->events.pop();
+                  has_event = true;
+                }
+              }
+            }
+
+            if (has_event) {
+              std::string payload = "event: " + next_ev.event + "\ndata: " + next_ev.data + "\n\n";
+              return sink.write(payload.data(), payload.size());
+            } else {
+              std::string ping = ": ping\n\n";
+              return sink.write(ping.data(), ping.size());
+            }
+          },
+          [this, client_queue](bool /*success*/) {
+            std::lock_guard<std::mutex> lock(this->hmr_clients_mutex);
+            this->hmr_clients.erase(
+                std::remove(this->hmr_clients.begin(), this->hmr_clients.end(), client_queue),
+                this->hmr_clients.end());
+          });
+    });
+
+    // Endpoint for dev runners to broadcast hot reload events to connected browsers
+    svr.Post("/nova/hmr/broadcast", [&](const httplib::Request &req, httplib::Response &res) {
+      std::string event = req.get_header_value("X-Nova-HMR-Event");
+      if (event.empty()) event = "component-update";
+      std::string data = req.body.empty() ? "{}" : req.body;
+      this->broadcastHMR(event, data);
+      res.set_content("{\"status\":\"ok\"}", "application/json");
+    });
+
+    // Graceful stop endpoint for dev reloader
+    svr.Post("/nova/stop", [&](const httplib::Request &req, httplib::Response &res) {
+      res.set_content("{\"status\":\"stopping\"}", "application/json");
+      this->hmr_active = false;
+      this->hmr_cv.notify_all();
+      this->svr.stop();
+    });
+
     // SPA Navigation Route (React Router style fast swap)
     svr.Post("/nova/navigate",
              [&](const httplib::Request &req, httplib::Response &res) {
@@ -228,8 +345,9 @@ public:
                  this->current_path = path;
                  this->clear();
 
-                 // Trigger onLoad for the new route
-                 if (callbacks.find("__onLoad") != callbacks.end()) {
+                 bool isHMR = req.has_header("X-Nova-HMR");
+                 // Trigger onLoad for route transitions, but preserve state during HMR Fast Refresh
+                 if (!isHMR && callbacks.find("__onLoad") != callbacks.end()) {
                    callbacks["__onLoad"]();
                  }
 
@@ -304,10 +422,10 @@ public:
 
       if (routes.find(path) != routes.end()) {
         std::lock_guard<std::mutex> lock(this->builder_mutex);
+        this->initializeSessionContext(req, res);
         std::string sid = np::Context::current_session_id;
         this->session_current_paths[sid] = path;
         this->current_path = path;
-        this->initializeSessionContext(req, res);
 
         if (callbacks.find("__onLoad") != callbacks.end()) {
           callbacks["__onLoad"]();

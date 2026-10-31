@@ -2,7 +2,11 @@
 if not exist build\CMakeCache.txt (
     cmake -B build
 )
-if "%1"=="build" (
+if "%1"=="dev" (
+    node scripts\dev-watcher.js
+) else if "%1"=="watch" (
+    node scripts\dev-watcher.js
+) else if "%1"=="build" (
     cmake --build build
     if "%2"=="run" (
         cmake --build build --target run-html
@@ -13,5 +17,5 @@ if "%1"=="build" (
     cmake --build build --target run-html
     build\Debug\NovaCPP.exe
 ) else (
-    echo Usage: nova [build^|run^|build run]
+    echo Usage: nova [dev^|build^|run^|build run]
 )
