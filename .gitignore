@@ -2,3 +2,7 @@ build
 .vscode
 node_modules
 render/dist
+data/
+*.db
+*.db-wal
+*.db-shm

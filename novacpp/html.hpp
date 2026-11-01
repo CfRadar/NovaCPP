@@ -115,8 +115,16 @@ private:
   std::condition_variable hmr_cv;
   std::vector<std::shared_ptr<HMRClientQueue>> hmr_clients;
   std::atomic<bool> hmr_active{true};
+  std::atomic<bool> is_shutting_down{false};
 
 public:
+  void stop() {
+    is_shutting_down = true;
+    hmr_active = false;
+    hmr_cv.notify_all();
+    svr.stop();
+  }
+
   void broadcastHMR(const std::string &event, const std::string &data = "{}") {
     std::lock_guard<std::mutex> lock(hmr_clients_mutex);
     for (auto &client : hmr_clients) {
@@ -396,9 +404,22 @@ public:
     // Graceful stop endpoint for dev reloader
     svr.Post("/nova/stop", [&](const httplib::Request &req, httplib::Response &res) {
       res.set_content("{\"status\":\"stopping\"}", "application/json");
-      this->hmr_active = false;
-      this->hmr_cv.notify_all();
-      this->svr.stop();
+      this->stop();
+    });
+
+    // Kubernetes Liveness Probe
+    svr.Get("/healthz", [](const httplib::Request &/*req*/, httplib::Response &res) {
+      res.set_content("{\"status\":\"ok\"}", "application/json");
+    });
+
+    // Kubernetes Readiness Probe
+    svr.Get("/readyz", [this](const httplib::Request &/*req*/, httplib::Response &res) {
+      if (this->is_shutting_down.load()) {
+        res.status = 503;
+        res.set_content("{\"status\":\"draining\"}", "application/json");
+        return;
+      }
+      res.set_content("{\"status\":\"ready\"}", "application/json");
     });
 
     // SPA Navigation Route (React Router style fast swap)
@@ -484,9 +505,10 @@ public:
     svr.Get(".*", [&](const httplib::Request &req, httplib::Response &res) {
       std::string path = req.path;
 
-      // Ignore static assets that slipped through
+      // Ignore static assets and health probes that slipped through
       if (path == "/styles.css" || path == "/nova.js" || path == "/app.js" ||
-          path == "/NovaCPP.png" || path.rfind("/assets/", 0) == 0 ||
+          path == "/NovaCPP.png" || path == "/healthz" || path == "/readyz" ||
+          path.rfind("/assets/", 0) == 0 ||
           path.rfind("/dist/", 0) == 0)
         return;
 

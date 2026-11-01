@@ -1,16 +1,42 @@
 #include "../novacpp/html.hpp"
 #include "backend/Database.hpp"
 #include "backend/Auth.hpp"
+#include <csignal>
+
+// Global app pointer for graceful signal handling in container environments
+static np::NovaBuilder* g_runningApp = nullptr;
+
+void signalHandler(int signum) {
+    std::cout << "\n[NovaCPP] Caught signal (" << signum << "). Initiating graceful drain..." << std::endl;
+    if (g_runningApp) {
+        g_runningApp->stop();
+    }
+}
 
 // Forward declare the page functions from frontend/App.cpp
 void renderHomePage(np::NovaBuilder& np);
 void renderAboutPage(np::NovaBuilder& np);
 
 int main() {
+    // Intercept SIGINT and SIGTERM for graceful shutdown
+    std::signal(SIGINT, signalHandler);
+#if defined(SIGTERM)
+    std::signal(SIGTERM, signalHandler);
+#endif
+
     np::NovaBuilder np;
+    g_runningApp = &np;
     
-    // 1. Initialize Pure Backend Services
-    Database::connect("postgres://nova_admin:secret@localhost:5432/nova_db");
+    // 1. Initialize SQLite Database Engine (reads DATABASE_URL or defaults to ./data/nova.db with WAL mode)
+    Database::connect();
+    Database::execute(
+        "CREATE TABLE IF NOT EXISTS users ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  name TEXT NOT NULL,"
+        "  email TEXT NOT NULL UNIQUE,"
+        "  role TEXT DEFAULT 'developer'"
+        ");"
+    );
     Auth::initializeSessions();
     
     // 2. Register SPA UI Routes
