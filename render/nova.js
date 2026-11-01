@@ -45,8 +45,40 @@ function triggerServerEffects(root = document) {
     });
 }
 
-// Automatically fetch live components in the background
-function setupPolling() {
+// Fetches background component update and surgically swaps DOM
+async function fetchPollUpdate(targetId) {
+    try {
+        const response = await fetch('/nova/poll', {
+            method: 'POST',
+            headers: { 'X-Nova-Target': targetId },
+            credentials: 'same-origin'
+        });
+
+        if (response.ok) {
+            const html = await response.text();
+            const targetEl = document.getElementById(targetId);
+            if (targetEl && targetEl.innerHTML !== html) {
+                const wasFlipped = targetEl.querySelector('.flip-card.is-flipped') !== null;
+                targetEl.innerHTML = html;
+                if (wasFlipped) {
+                    const newCard = targetEl.querySelector('.flip-card');
+                    if (newCard) newCard.classList.add('is-flipped');
+                }
+                setupWidgets(targetEl);
+                triggerServerEffects(targetEl);
+            }
+        }
+    } catch (error) {
+        // Suppress transient errors during server restart
+    }
+}
+
+// Automatically fetch live components in the background with adaptive Page Visibility throttling
+function setupPolling(isThrottled = null) {
+    if (isThrottled === null) {
+        isThrottled = typeof document !== 'undefined' && document.hidden;
+    }
+
     const pollElements = document.querySelectorAll('[nova-poll]');
     pollElements.forEach(el => {
         const intervalMs = parseInt(el.getAttribute('nova-poll'));
@@ -60,32 +92,12 @@ function setupPolling() {
 
             el.setAttribute('nova-poll-active', 'true');
 
-            window._novaPollIntervals[targetId] = setInterval(async () => {
-                try {
-                    const response = await fetch('/nova/poll', {
-                        method: 'POST',
-                        headers: { 'X-Nova-Target': targetId },
-                        credentials: 'same-origin'
-                    });
+            // When tab is hidden in the background, throttle polling to 15s or 10x interval to save battery and network
+            const effectiveInterval = isThrottled ? Math.max(intervalMs * 10, 15000) : intervalMs;
 
-                    if (response.ok) {
-                        const html = await response.text();
-                        const targetEl = document.getElementById(targetId);
-                        if (targetEl && targetEl.innerHTML !== html) {
-                            const wasFlipped = targetEl.querySelector('.flip-card.is-flipped') !== null;
-                            targetEl.innerHTML = html;
-                            if (wasFlipped) {
-                                const newCard = targetEl.querySelector('.flip-card');
-                                if (newCard) newCard.classList.add('is-flipped');
-                            }
-                            setupWidgets(targetEl);
-                            triggerServerEffects(targetEl);
-                        }
-                    }
-                } catch (error) {
-                    // Suppress transient errors during server restart
-                }
-            }, intervalMs);
+            window._novaPollIntervals[targetId] = setInterval(() => {
+                fetchPollUpdate(targetId);
+            }, effectiveInterval);
         }
     });
 }
@@ -264,6 +276,24 @@ window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('popstate', () => {
     navigateTo(window.location.pathname);
 });
+
+// Page Visibility API: throttle background polling when tab is inactive, resume immediately on focus
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        const isVisible = !document.hidden;
+        if (isVisible) {
+            // Instant Wakeup: immediately refresh all active polling components to eliminate stale data
+            document.querySelectorAll('[nova-poll-active="true"]').forEach(el => {
+                fetchPollUpdate(el.id);
+            });
+            // Re-arm standard declared polling intervals
+            setupPolling(false);
+        } else {
+            // Tab moved to background: throttle polling intervals to conserve power and server load
+            setupPolling(true);
+        }
+    });
+}
 
 // Intercept form submissions via nova-form
 document.addEventListener('submit', async (e) => {
