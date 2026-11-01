@@ -3,3 +3,7 @@ build
 .git
 .vscode
 render/dist
+data
+*.db
+*.db-wal
+*.db-shm
