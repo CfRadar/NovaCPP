@@ -64,6 +64,13 @@ int main() {
             << "</div>";
     });
 
+    // Asynchronous background task trigger demonstration
+    np.onClick("async_job", [&np]() {
+        np.enqueueTask([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        });
+    });
+
     // 3. Start the Live Server on the Cloud-provided PORT (or default to 8080)
     int port = 8080;
     if (const char* env_p = std::getenv("PORT")) {

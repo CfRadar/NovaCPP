@@ -18,6 +18,7 @@
 #include <thread>
 #include <regex>
 #include "state.hpp"
+#include "worker_pool.hpp"
 
 namespace np {
 class NovaBuilder;
@@ -419,6 +420,16 @@ public:
     }
     comp.render(*this);
     elements.push_back("</div>");
+  }
+
+  // Enqueue an asynchronous background task to the worker pool
+  bool enqueueTask(std::function<void()> task) {
+    return np::WorkerPool::defaultPool().enqueue(std::move(task));
+  }
+
+  // Reference to default background worker pool
+  np::WorkerPool& workers() {
+    return np::WorkerPool::defaultPool();
   }
 
   // Triggers a client-side npm effect upon surgical DOM delivery
