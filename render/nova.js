@@ -45,6 +45,118 @@ function triggerServerEffects(root = document) {
     });
 }
 
+// Morph an existing DOM node into target node cleanly without destroying parent nodes,
+// GPU compositing layers, or transient user state (like .is-flipped, active input focus, selection)
+function morphElement(existingNode, targetNode) {
+    if (!existingNode || !targetNode) return;
+
+    // 1. Text node morph: in-place value update without layout destruction or flicker
+    if (existingNode.nodeType === Node.TEXT_NODE && targetNode.nodeType === Node.TEXT_NODE) {
+        if (existingNode.nodeValue !== targetNode.nodeValue) {
+            existingNode.nodeValue = targetNode.nodeValue;
+        }
+        return;
+    }
+
+    // 2. If node types or tag names differ, replace node directly
+    if (existingNode.nodeType !== targetNode.nodeType || existingNode.nodeName !== targetNode.nodeName) {
+        if (existingNode.parentNode) {
+            existingNode.parentNode.replaceChild(targetNode.cloneNode(true), existingNode);
+        }
+        return;
+    }
+
+    // 3. Element node morph
+    if (existingNode.nodeType === Node.ELEMENT_NODE) {
+        const wasFlipped = existingNode.classList && existingNode.classList.contains('is-flipped');
+
+        // Synchronize attributes from target to existing
+        const targetAttrs = targetNode.attributes;
+        for (let i = 0; i < targetAttrs.length; i++) {
+            const attr = targetAttrs[i];
+            if (attr.name === 'class' && wasFlipped) {
+                const newClasses = attr.value.split(/\s+/).filter(Boolean);
+                if (!newClasses.includes('is-flipped')) {
+                    newClasses.push('is-flipped');
+                }
+                const mergedClass = newClasses.join(' ');
+                if (existingNode.getAttribute('class') !== mergedClass) {
+                    existingNode.setAttribute('class', mergedClass);
+                }
+            } else if (existingNode.getAttribute(attr.name) !== attr.value) {
+                existingNode.setAttribute(attr.name, attr.value);
+            }
+        }
+
+        // Remove attributes not present on target
+        for (let i = existingNode.attributes.length - 1; i >= 0; i--) {
+            const attr = existingNode.attributes[i];
+            if (!targetNode.hasAttribute(attr.name)) {
+                existingNode.removeAttribute(attr.name);
+            }
+        }
+
+        // Preserve focused input element values
+        if ((existingNode.nodeName === 'INPUT' || existingNode.nodeName === 'TEXTAREA') &&
+            document.activeElement !== existingNode && existingNode.value !== targetNode.value) {
+            existingNode.value = targetNode.value;
+        }
+
+        // Synchronize child nodes
+        const existingChildren = Array.from(existingNode.childNodes);
+        const targetChildren = Array.from(targetNode.childNodes);
+        const maxLen = Math.max(existingChildren.length, targetChildren.length);
+
+        for (let i = 0; i < maxLen; i++) {
+            const existingChild = existingChildren[i];
+            const targetChild = targetChildren[i];
+
+            if (!existingChild && targetChild) {
+                existingNode.appendChild(targetChild.cloneNode(true));
+            } else if (existingChild && !targetChild) {
+                existingNode.removeChild(existingChild);
+            } else if (existingChild && targetChild) {
+                morphElement(existingChild, targetChild);
+            }
+        }
+    }
+}
+
+// Morphs the inner HTML of a container element cleanly to eliminate visual flickering
+function morphInnerHtml(container, newHtml) {
+    if (!container) return;
+    if (container.innerHTML === newHtml) return;
+
+    const template = document.createElement('template');
+    template.innerHTML = newHtml.trim();
+    const fragment = template.content;
+
+    const existingElements = Array.from(container.children);
+    const targetElements = Array.from(fragment.children);
+
+    if (existingElements.length === 1 && targetElements.length === 1 &&
+        existingElements[0].nodeName === targetElements[0].nodeName) {
+        morphElement(existingElements[0], targetElements[0]);
+    } else {
+        const temp = document.createElement('div');
+        temp.appendChild(fragment);
+        const existingList = Array.from(container.childNodes);
+        const targetList = Array.from(temp.childNodes);
+        const maxLen = Math.max(existingList.length, targetList.length);
+        for (let i = 0; i < maxLen; i++) {
+            const ex = existingList[i];
+            const tg = targetList[i];
+            if (!ex && tg) {
+                container.appendChild(tg.cloneNode(true));
+            } else if (ex && !tg) {
+                container.removeChild(ex);
+            } else if (ex && tg) {
+                morphElement(ex, tg);
+            }
+        }
+    }
+}
+
 // Fetches background component update and surgically swaps DOM
 async function fetchPollUpdate(targetId) {
     try {
@@ -57,13 +169,8 @@ async function fetchPollUpdate(targetId) {
         if (response.ok) {
             const html = await response.text();
             const targetEl = document.getElementById(targetId);
-            if (targetEl && targetEl.innerHTML !== html) {
-                const wasFlipped = targetEl.querySelector('.flip-card.is-flipped') !== null;
-                targetEl.innerHTML = html;
-                if (wasFlipped) {
-                    const newCard = targetEl.querySelector('.flip-card');
-                    if (newCard) newCard.classList.add('is-flipped');
-                }
+            if (targetEl) {
+                morphInnerHtml(targetEl, html);
                 setupWidgets(targetEl);
                 triggerServerEffects(targetEl);
             }
@@ -180,7 +287,7 @@ function initHMR() {
                             const html = await response.text();
                             const el = document.getElementById(targetId);
                             if (el) {
-                                el.innerHTML = html;
+                                morphInnerHtml(el, html);
                                 setupPolling();
                                 setupWidgets(el);
                                 triggerServerEffects(el);
@@ -224,12 +331,7 @@ function applyDomUpdates(html, targetId, isMultiTarget) {
             const id = tpl.getAttribute('data-nova-swap');
             const el = document.getElementById(id);
             if (el) {
-                const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
-                el.innerHTML = tpl.innerHTML;
-                if (wasFlipped) {
-                    const newCard = el.querySelector('.flip-card');
-                    if (newCard) newCard.classList.add('is-flipped');
-                }
+                morphInnerHtml(el, tpl.innerHTML);
                 setupPolling();
                 setupWidgets(el);
                 triggerServerEffects(el);
@@ -241,12 +343,7 @@ function applyDomUpdates(html, targetId, isMultiTarget) {
     if (targetId) {
         const el = document.getElementById(targetId);
         if (el) {
-            const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
-            el.innerHTML = html;
-            if (wasFlipped) {
-                const newCard = el.querySelector('.flip-card');
-                if (newCard) newCard.classList.add('is-flipped');
-            }
+            morphInnerHtml(el, html);
             setupPolling();
             setupWidgets(el);
             triggerServerEffects(el);
@@ -256,7 +353,7 @@ function applyDomUpdates(html, targetId, isMultiTarget) {
     } else {
         const root = document.getElementById('root');
         if (root) {
-            root.innerHTML = html;
+            morphInnerHtml(root, html);
             setupPolling();
             setupWidgets(root);
             triggerServerEffects(root);
