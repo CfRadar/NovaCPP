@@ -481,15 +481,25 @@ public:
     return out;
   }
 
-  // Prepare session state for a request
+  // Prepare session state for a request with hardened cookie flags
   void initializeSessionContext(const httplib::Request &req,
                                 httplib::Response &res) {
     std::string sid = getSessionCookie(req);
     if (sid.empty()) {
       sid = generateSessionId();
-      // Set the cookie so the browser remembers its isolated state
-      res.set_header("Set-Cookie",
-                     "nova_session=" + sid + "; Path=/; HttpOnly");
+      bool isSecure = req.has_header("X-Forwarded-Proto") && 
+                      req.get_header_value("X-Forwarded-Proto") == "https";
+      const char* env_p = std::getenv("ENVIRONMENT");
+      if (!env_p) env_p = std::getenv("NODE_ENV");
+      if (env_p && std::string(env_p) == "production") {
+        isSecure = true;
+      }
+
+      std::string cookieVal = "nova_session=" + sid + "; Path=/; HttpOnly; SameSite=Lax";
+      if (isSecure) {
+        cookieVal += "; Secure";
+      }
+      res.set_header("Set-Cookie", cookieVal);
     }
     // Tell the np::State class which user is currently executing
     np::Context::current_session_id = sid;
@@ -498,8 +508,42 @@ public:
   // Starts the Live Server
   void listen(int port) {
 
-    // Mount static asset directories
-    svr.set_mount_point("/assets", "./src/assets");
+    // Global HTTP defensive security headers on all responses
+    svr.set_post_routing_handler([](const httplib::Request &/*req*/, httplib::Response &res) {
+      res.set_header("X-Frame-Options", "DENY");
+      res.set_header("X-Content-Type-Options", "nosniff");
+      res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
+    });
+
+    // Mount static asset directories with strict path traversal checking
+    svr.Get(R"(/assets/(.*))", [](const httplib::Request &req, httplib::Response &res) {
+      std::string subpath = req.matches[1];
+      if (subpath.find("..") != std::string::npos || subpath.find('\\') != std::string::npos) {
+        res.status = 403;
+        return;
+      }
+      std::string full_path = "./src/assets/" + subpath;
+      std::ifstream ifs(full_path, std::ios::binary);
+      if (ifs) {
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                            std::istreambuf_iterator<char>());
+        if (subpath.rfind(".png") == subpath.length() - 4) {
+          res.set_content(content, "image/png");
+        } else if (subpath.rfind(".jpg") == subpath.length() - 4 || subpath.rfind(".jpeg") == subpath.length() - 5) {
+          res.set_content(content, "image/jpeg");
+        } else if (subpath.rfind(".svg") == subpath.length() - 4) {
+          res.set_content(content, "image/svg+xml");
+        } else if (subpath.rfind(".css") == subpath.length() - 4) {
+          res.set_content(content, "text/css");
+        } else if (subpath.rfind(".js") == subpath.length() - 3) {
+          res.set_content(content, "application/javascript");
+        } else {
+          res.set_content(content, "application/octet-stream");
+        }
+      } else {
+        res.status = 404;
+      }
+    });
 
     // Serve static CSS file with strict MIME type
     svr.Get("/styles.css",
@@ -705,7 +749,7 @@ public:
           this->session_current_paths.erase(sid);
         }
       }
-      res.set_header("Set-Cookie", "nova_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+      res.set_header("Set-Cookie", "nova_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax");
       res.set_content("{\"status\":\"logged_out\"}", "application/json");
     });
 
