@@ -4,6 +4,47 @@
 // Global interval tracking to prevent duplicate polling loops during Fast Refresh
 window._novaPollIntervals = window._novaPollIntervals || {};
 
+// Registries for declarative npm effects and visualizer widgets
+window.NovaEffects = window.NovaEffects || {};
+window.NovaWidgets = window.NovaWidgets || {};
+
+// Built-in default effects
+window.NovaEffects['confetti'] = function(el) {
+    if (typeof window.triggerNovaConfetti === 'function') {
+        window.triggerNovaConfetti();
+    }
+};
+
+// Mount visual widgets (charts, pickers, 3D, code highlighters) automatically
+function setupWidgets(root = document) {
+    const widgets = root.querySelectorAll('[data-nova-widget]');
+    widgets.forEach(el => {
+        const name = el.getAttribute('data-nova-widget');
+        if (window.NovaWidgets && window.NovaWidgets[name] && !el._novaWidgetMounted) {
+            try {
+                const propsRaw = el.getAttribute('data-nova-props') || '{}';
+                const props = JSON.parse(propsRaw);
+                window.NovaWidgets[name].mount(el, props);
+                el._novaWidgetMounted = true;
+            } catch (err) {
+                console.error(`[NovaCPP] Error mounting widget '${name}':`, err);
+            }
+        }
+    });
+}
+
+// Trigger declarative effects dispatched from C++ server responses
+function triggerServerEffects(root = document) {
+    const triggers = root.querySelectorAll('[data-nova-trigger-effect]');
+    triggers.forEach(el => {
+        const effect = el.getAttribute('data-nova-trigger-effect');
+        if (window.NovaEffects && typeof window.NovaEffects[effect] === 'function') {
+            window.NovaEffects[effect](el);
+        }
+        el.remove(); // Clean up transient trigger marker
+    });
+}
+
 // Automatically fetch live components in the background
 function setupPolling() {
     const pollElements = document.querySelectorAll('[nova-poll]');
@@ -37,6 +78,8 @@ function setupPolling() {
                                 const newCard = targetEl.querySelector('.flip-card');
                                 if (newCard) newCard.classList.add('is-flipped');
                             }
+                            setupWidgets(targetEl);
+                            triggerServerEffects(targetEl);
                         }
                     }
                 } catch (error) {
@@ -70,7 +113,9 @@ async function navigateTo(path, isHMR = false) {
             if (root) {
                 root.innerHTML = html;
                 window.scrollTo(scrollX, scrollY);
-                setupPolling(); // Re-initialize polling for components
+                setupPolling();
+                setupWidgets(root);
+                triggerServerEffects(root);
             }
         }
     } catch (error) {
@@ -125,6 +170,8 @@ function initHMR() {
                             if (el) {
                                 el.innerHTML = html;
                                 setupPolling();
+                                setupWidgets(el);
+                                triggerServerEffects(el);
                                 return;
                             }
                         }
@@ -155,9 +202,11 @@ function initHMR() {
     connect();
 }
 
-// Run setup polling and HMR on initial page load
+// Run setup polling, widgets, effects, and HMR on initial page load
 window.addEventListener('DOMContentLoaded', () => {
     setupPolling();
+    setupWidgets();
+    triggerServerEffects();
     initHMR();
 });
 
@@ -178,6 +227,15 @@ document.addEventListener('click', async (e) => {
         // Execute the navigation
         await navigateTo(path);
         return;
+    }
+
+    // Intercept declarative npm effects
+    const effectEl = e.target.closest('[data-nova-effect]');
+    if (effectEl) {
+        const effect = effectEl.getAttribute('data-nova-effect');
+        if (window.NovaEffects && typeof window.NovaEffects[effect] === 'function') {
+            window.NovaEffects[effect](effectEl);
+        }
     }
 
     // Intercept component interactions
@@ -208,12 +266,17 @@ document.addEventListener('click', async (e) => {
                             if (newCard) newCard.classList.add('is-flipped');
                         }
                         setupPolling();
+                        setupWidgets(el);
+                        triggerServerEffects(el);
                     } else {
                         console.error('NovaCPP: Target component ' + targetId + ' not found in DOM.');
                     }
                 } else {
-                    document.getElementById('root').innerHTML = html;
+                    const root = document.getElementById('root');
+                    root.innerHTML = html;
                     setupPolling();
+                    setupWidgets(root);
+                    triggerServerEffects(root);
                 }
             }
         } catch (error) {

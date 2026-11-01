@@ -77,7 +77,7 @@ public:
                         <div class="hero-code-chip">
                             <span class="mono-prompt">$</span> npm run dev
                         </div>
-                        <button class="btn-primary btn-confetti" onclick="window.triggerNovaConfetti()">
+                        <button class="btn-primary" data-nova-effect="confetti">
                             Launch Confetti &rarr;
                         </button>
                     </div>
@@ -234,8 +234,8 @@ public:
                             NovaCPP re-renders in ~1s without resetting your counter state!
                         </p>
                         <div class="btn-group">
-                            <button class="btn-secondary btn-confetti" onclick="window.triggerNovaConfetti()">
-                                Test npm Module &#127881;
+                            <button class="btn-secondary" data-nova-effect="confetti">
+                                Test npm Module
                             </button>
                         </div>
                     </div>

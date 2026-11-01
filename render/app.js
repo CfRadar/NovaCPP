@@ -97,6 +97,10 @@ window.triggerNovaConfetti = () => {
     });
 };
 
+// Register in NovaEffects registry for declarative data-nova-effect="confetti"
+window.NovaEffects = window.NovaEffects || {};
+window.NovaEffects['confetti'] = () => window.triggerNovaConfetti();
+
 // Auto-trigger confetti when user clicks any confetti-enabled element
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-confetti');

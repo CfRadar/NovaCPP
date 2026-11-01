@@ -16,7 +16,7 @@ NovaCPP is a high-performance C++ web framework designed to build responsive, in
 * **Declarative & Component-Based:** Build encapsulated components in standard C++ that manage their own state and surgically update only changed DOM nodes.
 * **Full-Stack Monolith (No-API):** Write your UI layouts, business logic, and database operations in a single C++ executable. No JSON REST serialization overhead.
 * **Instant Fast Refresh HMR:** Incremental ~1s C++ recompilation pushed directly over Server-Sent Events without resetting state.
-* **Standard npm Packages:** Install standard packages with `npm i <package>` and import them directly in the browser via automated `esbuild` pre-bundling.
+* **Industry-Dominant npm Ecosystem:** Tap into npm's 2+ million browser packages directly from C++ using automated esbuild pre-bundling and declarative zero-JS data attributes.
 
 ---
 

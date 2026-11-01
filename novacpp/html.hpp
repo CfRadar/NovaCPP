@@ -26,6 +26,31 @@ public:
   virtual void render(NovaBuilder &np) = 0;
   virtual ~Component() = default;
 };
+
+// Declarative UI helpers for zero-JS npm ecosystem integration
+namespace ui {
+  // Returns data-nova-effect attribute string for interactive elements
+  inline std::string effect(const std::string &effectName) {
+    return " data-nova-effect=\"" + effectName + "\"";
+  }
+
+  // Returns data-nova-widget mount attribute string for visualizer components
+  inline std::string widget(const std::string &widgetName, const std::string &propsJson = "{}") {
+    return " data-nova-widget=\"" + widgetName + "\" data-nova-props=\"" + propsJson + "\"";
+  }
+
+  // Declarative button with optional built-in npm effect
+  inline std::string button(const std::string &label, 
+                            const std::string &className = "btn-primary", 
+                            const std::string &effectName = "") {
+    std::string html = "<button class=\"" + className + "\"";
+    if (!effectName.empty()) {
+      html += effect(effectName);
+    }
+    html += ">" + label + "</button>";
+    return html;
+  }
+} // namespace ui
 } // namespace np
 
 // Include the cpp-httplib web server (This is massive, so we include it AFTER
@@ -142,6 +167,11 @@ public:
     }
     comp.render(*this);
     elements.push_back("</div>");
+  }
+
+  // Triggers a client-side npm effect upon surgical DOM delivery
+  void triggerEffect(const std::string &effectName) {
+    elements.push_back("<span data-nova-trigger-effect=\"" + effectName + "\" style=\"display:none;\"></span>");
   }
 
   // Generate the HTML string
