@@ -1,7 +1,9 @@
 #include "../novacpp/html.hpp"
+#include "../novacpp/redis_state.hpp"
 #include "backend/Database.hpp"
 #include "backend/Auth.hpp"
 #include <csignal>
+#include <cstdlib>
 
 // Global app pointer for graceful signal handling in container environments
 static np::NovaBuilder* g_runningApp = nullptr;
@@ -26,6 +28,12 @@ int main() {
 
     np::NovaBuilder np;
     g_runningApp = &np;
+
+    // Optional: Initialize distributed Redis session store if REDIS_URL is provided
+    if (const char* redisUrl = std::getenv("REDIS_URL")) {
+        std::cout << "[NovaCPP] Initializing distributed Redis state adapter from REDIS_URL" << std::endl;
+        np::useStateStore(np::RedisStateStore::fromUri(redisUrl));
+    }
     
     // 1. Initialize SQLite Database Engine (reads DATABASE_URL or defaults to ./data/nova.db with WAL mode)
     Database::connect();

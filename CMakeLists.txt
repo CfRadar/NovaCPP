@@ -67,6 +67,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/simulate_worker_pool.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/simulate_redis_state.cpp")
+    add_executable(simulate_redis_state ../test/simulate_redis_state.cpp)
+    target_include_directories(simulate_redis_state PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_redis_state ws2_32)
+    else()
+        target_link_libraries(simulate_redis_state pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html
