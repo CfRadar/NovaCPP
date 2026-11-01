@@ -20,19 +20,20 @@ private:
 
 public:
     explicit SQLiteConnection(const std::string& dbPath) : m_path(dbPath) {
-        // Automatically ensure parent directory exists
+        // Automatically ensure parent directory exists for file-backed databases
         try {
-            std::filesystem::path p(dbPath);
-            if (p.has_parent_path()) {
-                std::filesystem::create_directories(p.parent_path());
+            if (dbPath != ":memory:" && dbPath.find("mode=memory") == std::string::npos) {
+                std::filesystem::path p(dbPath);
+                if (p.has_parent_path()) {
+                    std::filesystem::create_directories(p.parent_path());
+                }
             }
         } catch (const std::exception& e) {
             std::cerr << "[NovaCPP SQLite] Warning: could not create parent directories: " << e.what() << std::endl;
         }
 
-        if (sqlite3_open_v2(dbPath.c_str(), &m_db, 
-                            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, 
-                            nullptr) != SQLITE_OK) {
+        int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_URI;
+        if (sqlite3_open_v2(dbPath.c_str(), &m_db, flags, nullptr) != SQLITE_OK) {
             std::string err = m_db ? sqlite3_errmsg(m_db) : "Unknown error";
             if (m_db) {
                 sqlite3_close(m_db);
@@ -41,12 +42,14 @@ public:
             throw std::runtime_error("[NovaCPP SQLite] Failed to open database at '" + dbPath + "': " + err);
         }
 
-        // Apply production WAL Mode & high-concurrency pragmas automatically
-        execute("PRAGMA journal_mode = WAL;");
-        execute("PRAGMA synchronous = NORMAL;");
-        execute("PRAGMA cache_size = -64000;"); // ~64MB memory page cache
-        execute("PRAGMA busy_timeout = 5000;"); // 5s timeout before SQLITE_BUSY
-        execute("PRAGMA foreign_keys = ON;");
+        // Apply production WAL Mode & high-concurrency pragmas automatically for persistent DBs
+        if (dbPath != ":memory:" && dbPath.find("mode=memory") == std::string::npos) {
+            execute("PRAGMA journal_mode = WAL;");
+            execute("PRAGMA synchronous = NORMAL;");
+            execute("PRAGMA cache_size = -64000;"); // ~64MB memory page cache
+            execute("PRAGMA busy_timeout = 5000;"); // 5s timeout before SQLITE_BUSY
+            execute("PRAGMA foreign_keys = ON;");
+        }
     }
 
     ~SQLiteConnection() {

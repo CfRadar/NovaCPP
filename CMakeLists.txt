@@ -77,6 +77,17 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/simulate_redis_state.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/test_env_and_db_uri.cpp")
+    add_executable(test_env_and_db_uri ../test/test_env_and_db_uri.cpp src/backend/Database.cpp novacpp/sqlite/sqlite3.c)
+    target_include_directories(test_env_and_db_uri PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    target_compile_definitions(test_env_and_db_uri PRIVATE SQLITE_ENABLE_WAL=1 SQLITE_ENABLE_JSON1=1)
+    if(WIN32)
+        target_link_libraries(test_env_and_db_uri ws2_32)
+    else()
+        target_link_libraries(test_env_and_db_uri pthread ${CMAKE_DL_LIBS})
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html

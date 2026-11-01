@@ -1,4 +1,5 @@
 #include "../novacpp/html.hpp"
+#include "../novacpp/env.hpp"
 #include "../novacpp/redis_state.hpp"
 #include "backend/Database.hpp"
 #include "backend/Auth.hpp"
@@ -20,6 +21,9 @@ void renderHomePage(np::NovaBuilder& np);
 void renderAboutPage(np::NovaBuilder& np);
 
 int main() {
+    // 0. Load .env configuration file if present
+    np::loadEnv(".env");
+
     // Intercept SIGINT and SIGTERM for graceful shutdown
     std::signal(SIGINT, signalHandler);
 #if defined(SIGTERM)

@@ -40,6 +40,9 @@ public:
     // Returns true if an active database pool is initialized
     static bool isConnected();
 
+    // Closes and releases all connections in the pool
+    static void close();
+
     // Returns count of currently available/idle connections in pool
     static size_t getAvailableConnections();
 
