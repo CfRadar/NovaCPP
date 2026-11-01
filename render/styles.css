@@ -1,6 +1,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* ==========================================================================
+   NOVACPP STYLESHEET & DESIGN SYSTEM BOILERPLATE
+   
+   QUICK UTILITY REFERENCE FOR CUSTOM CODING:
+   --------------------------------------------------------------------------
+   - .bento-grid   : 12-column responsive layout container (max-width: 1360px).
+   - .bento-card   : Rounded card with subtle border, shadow, and surface bg.
+   - .col-12       : Full-width card (span 12).
+   - .col-8        : Two-thirds card (span 8).
+   - .col-6        : Half-width card (span 6).
+   - .col-4        : One-third card (span 4).
+   - .btn-primary  : Solid accent action button (hover lift + active depress).
+   - .btn-secondary: Subtle surface button with low-contrast border.
+   - .badge        : Small status pill (.badge-blue, .badge-mint, .badge-peach).
+   --------------------------------------------------------------------------
+   ========================================================================== */
+
+/* ==========================================================================
    DESIGN TOKENS - CALM, GENTLE & CONFIDENT DESIGN SYSTEM
    Inspired by Linear, Stripe docs, Notion, and Vercel light mode.
    ========================================================================== */
@@ -375,6 +392,16 @@ body {
 #feat-state .bento-card { animation-delay: 0.29s; }
 #feat-monolith .bento-card { animation-delay: 0.32s; }
 
+/* Zero-Flicker Protection: Once loaded or when polled, completely disable entrance animations */
+body.page-ready .bento-card,
+body.page-ready .navbar-card,
+body.page-ready .hero-card,
+[nova-poll] .bento-card,
+.bento-card.is-flipped,
+.bento-card[data-morphed="true"] {
+    animation: none !important;
+}
+
 /* Grid Column Spans */
 .col-12 { grid-column: span 12; }
 .col-8  { grid-column: span 8; }
@@ -712,13 +739,13 @@ body {
     color: var(--text-primary);
 }
 
-.status-dot, .nav-status-badge::before {
-    content: '';
+.status-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background-color: #10B981;
     display: inline-block;
+    flex-shrink: 0;
 }
 
 /* ==========================================================================
@@ -910,9 +937,14 @@ body {
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.1;
+    font-family: 'JetBrains Mono', -apple-system, BlinkMacSystemFont, monospace;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
     letter-spacing: -0.04em;
     margin: var(--space-2) 0 var(--space-3);
+    min-height: 3.3rem;
+    display: flex;
+    align-items: center;
 }
 
 .card-title {
@@ -1234,11 +1266,13 @@ button:active {
 /* Sticky Segmented Control Tab Bar */
 .nav-tab-slider-wrapper {
     position: sticky;
-    top: 12px;
+    top: 76px;
     z-index: 90;
     display: flex;
+    align-items: center;
     justify-content: center;
-    margin: var(--space-4) 0 var(--space-6);
+    gap: 10px;
+    margin: var(--space-2) 0 var(--space-5);
     pointer-events: none;
 }
 
@@ -1256,6 +1290,12 @@ button:active {
     pointer-events: auto;
     max-width: 95vw;
     overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.nav-tab-slider::-webkit-scrollbar {
+    display: none;
 }
 
 .nav-tab-pill {
@@ -1310,12 +1350,11 @@ button:active {
 
 /* Floating Navigation Chevrons */
 .swipe-arrow {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 80;
-    width: 44px;
-    height: 44px;
+    position: static;
+    transform: none;
+    z-index: 91;
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-full);
     background: var(--bg-surface);
     border: 1px solid var(--border-medium);
@@ -1324,31 +1363,19 @@ button:active {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-sm);
     transition: all var(--transition-fast);
-    font-size: 1.25rem;
+    font-size: 1rem;
     user-select: none;
+    pointer-events: auto;
+    flex-shrink: 0;
 }
 
 .swipe-arrow:hover {
     background: var(--bg-surface-hover);
     border-color: var(--accent);
     color: var(--accent);
-    transform: translateY(-50%) scale(1.05);
-}
-
-.swipe-arrow-prev {
-    left: 14px;
-}
-
-.swipe-arrow-next {
-    right: 14px;
-}
-
-@media (max-width: 1024px) {
-    .swipe-arrow {
-        display: none;
-    }
+    transform: scale(1.05);
 }
 
 /* Section Header Banners */
@@ -1362,6 +1389,10 @@ button:active {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
+    max-width: 1360px;
+    margin: 0 auto var(--space-4);
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .section-banner-title {

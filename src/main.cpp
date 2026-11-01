@@ -1,5 +1,34 @@
+/* ============================================================================
+   NOVACPP BACKEND SERVER ENTRYPOINT
+   Main orchestration file: environment loader, database pool, and routing.
+
+   ============================================================================
+   MINIMAL MAIN BOILERPLATE (To start fresh, you can use this minimal template):
+   ============================================================================
+   #include "../novacpp/html.hpp"
+   #include "../novacpp/env.hpp"
+   #include "../novacpp/state.hpp"
+   #include "../novacpp/worker_pool.hpp"
+   #include "../novacpp/redis_state.hpp"
+   #include "backend/Database.hpp"
+   #include "backend/Auth.hpp"
+
+   void renderHomePage(np::NovaBuilder& np);
+
+   int main() {
+       np::loadEnv(".env");
+       Database::connect();
+       np::NovaBuilder np;
+       np.route("/", renderHomePage);
+       np.listen(8080);
+       return 0;
+   }
+   ============================================================================ */
+
 #include "../novacpp/html.hpp"
 #include "../novacpp/env.hpp"
+#include "../novacpp/state.hpp"
+#include "../novacpp/worker_pool.hpp"
 #include "../novacpp/redis_state.hpp"
 #include "backend/Database.hpp"
 #include "backend/Auth.hpp"

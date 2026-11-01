@@ -58,6 +58,14 @@ function morphElement(existingNode, targetNode) {
         return;
     }
 
+    // 1b. Comment node morph
+    if (existingNode.nodeType === Node.COMMENT_NODE && targetNode.nodeType === Node.COMMENT_NODE) {
+        if (existingNode.nodeValue !== targetNode.nodeValue) {
+            existingNode.nodeValue = targetNode.nodeValue;
+        }
+        return;
+    }
+
     // 2. If node types or tag names differ, replace node directly
     if (existingNode.nodeType !== targetNode.nodeType || existingNode.nodeName !== targetNode.nodeName) {
         if (existingNode.parentNode) {
@@ -126,6 +134,10 @@ function morphElement(existingNode, targetNode) {
 function morphInnerHtml(container, newHtml) {
     if (!container) return;
     if (container.innerHTML === newHtml) return;
+
+    if (typeof document !== 'undefined' && document.body && !document.body.classList.contains('page-ready')) {
+        document.body.classList.add('page-ready');
+    }
 
     const template = document.createElement('template');
     template.innerHTML = newHtml.trim();
@@ -510,10 +522,18 @@ window.addEventListener('DOMContentLoaded', () => {
     initHMR();
     setupSwipeGestures();
     syncSlideFromHash();
+    setTimeout(() => {
+        if (document.body) {
+            document.body.classList.add('page-ready');
+        }
+    }, 650);
 });
 
 window.addEventListener('load', () => {
     updateSwipeUi();
+    if (document.body) {
+        document.body.classList.add('page-ready');
+    }
 });
 
 if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {

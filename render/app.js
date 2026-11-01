@@ -1,4 +1,29 @@
-// app.js
+/* ============================================================================
+   NOVACPP CLIENT-SIDE RUNTIME ENTRYPOINT (render/app.js)
+   Supports bare-specifier ESM npm package imports pre-bundled via esbuild.
+
+   ============================================================================
+   MINIMAL CLIENT APP BOILERPLATE (To start coding custom client logic, use):
+   ============================================================================
+   import confetti from 'canvas-confetti';
+   import dayjs from 'dayjs';
+
+   console.log('App initialized at:', dayjs().format());
+
+   // Theme Toggle Function
+   window.toggleNovaTheme = () => {
+       const current = document.documentElement.getAttribute('data-theme');
+       const next = current === 'dark' ? 'light' : 'dark';
+       document.documentElement.setAttribute('data-theme', next);
+       localStorage.setItem('nova-theme', next);
+   };
+
+   // Declarative Effect Trigger (callable via data-nova-effect="confetti")
+   window.triggerNovaConfetti = () => {
+       confetti({ particleCount: 50, spread: 60 });
+   };
+   ============================================================================ */
+
 // Client-side application logic utilizing standard npm packages via ESM import maps
 import confetti from 'canvas-confetti';
 import dayjs from 'dayjs';

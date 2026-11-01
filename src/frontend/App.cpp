@@ -1,7 +1,53 @@
 /* ============================================================================
-   NOVACPP STARTER TEMPLATE
+   NOVACPP STARTER TEMPLATE & SHOWCASE
    A blazing-fast, reactive full-stack C++ web framework.
    Combines the DX of React with the raw speed of native C++.
+
+   ============================================================================
+   QUICK-START BOILERPLATE (To start coding your own app, wipe this file and use):
+   ============================================================================
+   #include <string>
+   #include <vector>
+   #include <map>
+   #include <iostream>
+
+   // All Framework Headers:
+   #include "../../novacpp/html.hpp"        // Core builder, components, server
+   #include "../../novacpp/state.hpp"       // Reactive session-isolated np::State hooks
+   #include "../../novacpp/fetch.hpp"       // Native outbound REST client
+   #include "../../novacpp/worker_pool.hpp" // Worker pool for async background tasks
+   #include "../../novacpp/env.hpp"         // Zero-dependency .env loader
+   #include "../backend/Database.hpp"       // SQLite WAL connection pool & queries
+   #include "../backend/Auth.hpp"           // User authentication & sessions
+
+   np::State<int> myCount(0);
+
+   class MyComponent : public np::Component {
+   public:
+       MyComponent() : Component("my-comp") {}
+       void render(np::NovaBuilder& np) override {
+           np << "<div class='bento-card col-12'>"
+              << "  <h2>My First NovaCPP Component</h2>"
+              << "  <p>Count: " + std::to_string(myCount.get()) + "</p>"
+              << "  <button class='btn-primary' nova-click='inc' nova-target='my-comp'>+ Count</button>"
+              << "</div>";
+       }
+   };
+
+   MyComponent myComp;
+
+   void renderHomePage(np::NovaBuilder& np) {
+       np.onClick("inc", []() { myCount = myCount + 1; });
+       np << "<div class='bento-grid'>";
+       np.renderComponent(myComp);
+       np << "</div>";
+   }
+
+   void renderAboutPage(np::NovaBuilder& np) {
+       np << "<div class='bento-grid'><div class='bento-card col-12'><h1>About</h1><a href='/' nova-link>&larr; Back</a></div></div>";
+   }
+   ============================================================================
+   (A standalone version of this template is also available in src/frontend/Boilerplate.cpp)
    ============================================================================ */
 
 #include <string>
@@ -1183,6 +1229,7 @@ void renderHomePage(np::NovaBuilder& np) {
     // STICKY SEGMENTED CONTROL TAB BAR
     np << R"html(
     <div class="nav-tab-slider-wrapper">
+        <button type="button" class="swipe-arrow swipe-arrow-prev" onclick="window.swipePrev()" title="Previous Section" aria-label="Previous Section">&larr;</button>
         <div class="nav-tab-slider" role="tablist">
             <div class="nav-tab-pill"></div>
             <button type="button" class="tab-btn active" onclick="window.goToSlide(0)" role="tab" aria-selected="true" id="tab-0">
@@ -1195,11 +1242,8 @@ void renderHomePage(np::NovaBuilder& np) {
                 <span class="tab-num">03</span> Architecture &amp; Docs
             </button>
         </div>
+        <button type="button" class="swipe-arrow swipe-arrow-next" onclick="window.swipeNext()" title="Next Section" aria-label="Next Section">&rarr;</button>
     </div>
-
-    <!-- Floating Chevrons for Desktop / Widescreen -->
-    <button type="button" class="swipe-arrow swipe-arrow-prev" onclick="window.swipePrev()" title="Previous Section" aria-label="Previous Section">&larr;</button>
-    <button type="button" class="swipe-arrow swipe-arrow-next" onclick="window.swipeNext()" title="Next Section" aria-label="Next Section">&rarr;</button>
 
     <!-- Horizontal Swipe Viewport & Track -->
     <div class="nova-viewport">

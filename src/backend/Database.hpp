@@ -1,5 +1,27 @@
 #pragma once
 
+/* ============================================================================
+   NOVACPP DATABASE SERVICE (src/backend/Database.hpp)
+   SQLite WAL Connection Pool & RAII Guard API.
+
+   BOILERPLATE USAGE:
+   1. Connect at startup:
+      Database::connect(); // reads DATABASE_URL from .env or defaults to ./data/nova.db
+
+   2. Execute DDL / Mutations:
+      Database::execute("CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT);");
+
+   3. Query Rows or Scalars:
+      auto rows = Database::query("SELECT id, name FROM items;");
+      std::string count = Database::queryScalar("SELECT COUNT(*) FROM items;");
+
+   4. Scoped RAII Connection Guard:
+      {
+          auto guard = Database::acquire();
+          guard->execute("INSERT INTO items (name) VALUES ('Widget');");
+      } // Connection handle returned automatically to pool on scope exit
+   ============================================================================ */
+
 #include <string>
 #include <vector>
 #include <map>
