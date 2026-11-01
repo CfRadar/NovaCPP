@@ -46,6 +46,17 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/simulate_pool.cpp")
     endif()
 endif()
 
+# Test simulation target for Session State TTL and Eviction
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/simulate_state_ttl.cpp")
+    add_executable(simulate_state_ttl ../test/simulate_state_ttl.cpp)
+    target_include_directories(simulate_state_ttl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_state_ttl ws2_32)
+    else()
+        target_link_libraries(simulate_state_ttl pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html

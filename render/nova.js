@@ -215,6 +215,80 @@ window.addEventListener('popstate', () => {
     navigateTo(window.location.pathname);
 });
 
+// Intercept form submissions via nova-form
+document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('[nova-form]');
+    if (!form) return;
+
+    e.preventDefault();
+    const actionName = form.getAttribute('nova-form');
+    const targetId = form.getAttribute('nova-target');
+
+    const formData = new FormData(form);
+    const payload = {};
+    formData.forEach((value, key) => {
+        if (payload.hasOwnProperty(key)) {
+            if (Array.isArray(payload[key])) {
+                payload[key].push(value);
+            } else {
+                payload[key] = [payload[key], value];
+            }
+        } else {
+            payload[key] = value;
+        }
+    });
+
+    // Also collect any elements with nova-model inside the form if not in formData
+    const modeled = form.querySelectorAll('[nova-model][name]');
+    modeled.forEach(input => {
+        const name = input.getAttribute('name');
+        if (!payload.hasOwnProperty(name)) {
+            payload[name] = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value;
+        }
+    });
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (targetId) headers['X-Nova-Target'] = targetId;
+
+        const response = await fetch('/nova/form/' + actionName, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload),
+            credentials: 'same-origin'
+        });
+
+        if (response.ok) {
+            const html = await response.text();
+
+            if (targetId) {
+                const el = document.getElementById(targetId);
+                if (el) {
+                    const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
+                    el.innerHTML = html;
+                    if (wasFlipped) {
+                        const newCard = el.querySelector('.flip-card');
+                        if (newCard) newCard.classList.add('is-flipped');
+                    }
+                    setupPolling();
+                    setupWidgets(el);
+                    triggerServerEffects(el);
+                } else {
+                    console.error('NovaCPP: Target component ' + targetId + ' not found in DOM.');
+                }
+            } else {
+                const root = document.getElementById('root');
+                root.innerHTML = html;
+                setupPolling();
+                setupWidgets(root);
+                triggerServerEffects(root);
+            }
+        }
+    } catch (error) {
+        console.error('NovaCPP form submit error:', error);
+    }
+});
+
 document.addEventListener('click', async (e) => {
     // Intercept SPA routing links
     if (e.target.hasAttribute('nova-link')) {

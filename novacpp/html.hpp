@@ -14,6 +14,8 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <thread>
+#include "state.hpp"
 
 namespace np {
 class NovaBuilder;
@@ -50,6 +52,21 @@ namespace ui {
     html += ">" + label + "</button>";
     return html;
   }
+
+  // Declarative form helper with action name and optional target element ID
+  inline std::string form(const std::string &actionName, 
+                          const std::string &targetId = "", 
+                          const std::string &className = "") {
+    std::string html = "<form nova-form=\"" + actionName + "\"";
+    if (!targetId.empty()) {
+      html += " nova-target=\"" + targetId + "\"";
+    }
+    if (!className.empty()) {
+      html += " class=\"" + className + "\"";
+    }
+    html += ">";
+    return html;
+  }
 } // namespace ui
 } // namespace np
 
@@ -59,6 +76,50 @@ namespace ui {
 #include "state.hpp"
 
 namespace np {
+
+// Lightweight JSON parser for form payload maps
+inline std::map<std::string, std::string> parseJsonMap(const std::string &jsonStr) {
+  std::map<std::string, std::string> result;
+  size_t i = 0;
+  while (i < jsonStr.length()) {
+    size_t keyStart = jsonStr.find('"', i);
+    if (keyStart == std::string::npos) break;
+    size_t keyEnd = jsonStr.find('"', keyStart + 1);
+    if (keyEnd == std::string::npos) break;
+    std::string key = jsonStr.substr(keyStart + 1, keyEnd - keyStart - 1);
+
+    size_t colon = jsonStr.find(':', keyEnd + 1);
+    if (colon == std::string::npos) break;
+
+    size_t valStart = jsonStr.find_first_not_of(" \t\r\n", colon + 1);
+    if (valStart == std::string::npos) break;
+
+    std::string val;
+    if (jsonStr[valStart] == '"') {
+      size_t valEnd = valStart + 1;
+      while (valEnd < jsonStr.length()) {
+        if (jsonStr[valEnd] == '"' && jsonStr[valEnd - 1] != '\\') break;
+        valEnd++;
+      }
+      if (valEnd < jsonStr.length()) {
+        val = jsonStr.substr(valStart + 1, valEnd - valStart - 1);
+        i = valEnd + 1;
+      } else {
+        break;
+      }
+    } else {
+      size_t valEnd = jsonStr.find_first_of(",}\r\n", valStart);
+      if (valEnd == std::string::npos) valEnd = jsonStr.length();
+      val = jsonStr.substr(valStart, valEnd - valStart);
+      while (!val.empty() && std::isspace(static_cast<unsigned char>(val.back()))) {
+        val.pop_back();
+      }
+      i = valEnd;
+    }
+    result[key] = val;
+  }
+  return result;
+}
 
 // Helper to generate a random session ID
 inline std::string generateSessionId() {
@@ -103,6 +164,7 @@ private:
   std::vector<std::string> elements;
   httplib::Server svr;
   std::map<std::string, std::function<void()>> callbacks;
+  std::map<std::string, std::function<void(const std::map<std::string, std::string>&)>> form_callbacks;
   std::map<std::string, Component *> components; // Map of registered components
   std::map<std::string, std::function<void(NovaBuilder &)>>
       routes;                     // Registered pages
@@ -117,11 +179,30 @@ private:
   std::atomic<bool> hmr_active{true};
   std::atomic<bool> is_shutting_down{false};
 
+  // Background session state cleaner
+  std::thread session_cleaner_thread;
+  std::condition_variable cleaner_cv;
+  std::mutex cleaner_mtx;
+
 public:
+  NovaBuilder() = default;
+
+  ~NovaBuilder() {
+    if (session_cleaner_thread.joinable()) {
+      is_shutting_down = true;
+      cleaner_cv.notify_all();
+      session_cleaner_thread.join();
+    }
+  }
+
   void stop() {
     is_shutting_down = true;
     hmr_active = false;
     hmr_cv.notify_all();
+    cleaner_cv.notify_all();
+    if (session_cleaner_thread.joinable()) {
+      session_cleaner_thread.join();
+    }
     svr.stop();
   }
 
@@ -151,6 +232,18 @@ public:
   // Register a C++ callback for a button action (like React's onClick)
   void onClick(const std::string &actionName, std::function<void()> callback) {
     callbacks[actionName] = callback;
+  }
+
+  // Register a C++ callback for a form submission with serialized input values
+  void onForm(const std::string &actionName,
+              std::function<void(const std::map<std::string, std::string> &)> callback) {
+    form_callbacks[actionName] = callback;
+  }
+
+  // Alias for onForm accepting typed map callback
+  void action(const std::string &actionName,
+              std::function<void(const std::map<std::string, std::string> &)> callback) {
+    form_callbacks[actionName] = callback;
   }
 
   // Register a C++ callback that runs when the page is loaded/refreshed
@@ -422,6 +515,38 @@ public:
       res.set_content("{\"status\":\"ready\"}", "application/json");
     });
 
+    // Start periodic background session state eviction worker
+    session_cleaner_thread = std::thread([this]() {
+      while (!this->is_shutting_down.load()) {
+        std::unique_lock<std::mutex> lock(this->cleaner_mtx);
+        this->cleaner_cv.wait_for(lock, std::chrono::seconds(60), [this]() {
+          return this->is_shutting_down.load();
+        });
+        if (this->is_shutting_down.load()) break;
+        np::StateRegistry::instance().evictAll();
+      }
+    });
+
+    // Endpoint for manual session state eviction
+    svr.Post("/nova/session/evict", [](const httplib::Request &/*req*/, httplib::Response &res) {
+      size_t count = np::StateRegistry::instance().evictAll();
+      res.set_content("{\"status\":\"ok\",\"evicted\":" + std::to_string(count) + "}", "application/json");
+    });
+
+    // Endpoint for session logout and state destruction
+    svr.Post("/nova/session/logout", [this](const httplib::Request &req, httplib::Response &res) {
+      std::string sid = getSessionCookie(req);
+      if (!sid.empty()) {
+        np::StateRegistry::instance().clearSessionAll(sid);
+        {
+          std::lock_guard<std::mutex> lock(this->builder_mutex);
+          this->session_current_paths.erase(sid);
+        }
+      }
+      res.set_header("Set-Cookie", "nova_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+      res.set_content("{\"status\":\"logged_out\"}", "application/json");
+    });
+
     // SPA Navigation Route (React Router style fast swap)
     svr.Post("/nova/navigate",
              [&](const httplib::Request &req, httplib::Response &res) {
@@ -471,6 +596,54 @@ public:
         res.set_content(partialBuilder.generateHTML(false), "text/html");
       } else {
         // FULL RENDER: Re-render the current route for this specific session
+        std::lock_guard<std::mutex> lock(this->builder_mutex);
+        std::string sid = np::Context::current_session_id;
+        std::string active_path = this->session_current_paths.count(sid)
+                                      ? this->session_current_paths[sid]
+                                      : this->current_path;
+        this->clear();
+        if (routes.find(active_path) != routes.end()) {
+          routes[active_path](*this);
+        }
+        res.set_content(this->generateHTML(false), "text/html");
+      }
+    });
+
+    // The form route handles serialized form submissions from the browser
+    svr.Post(R"(/nova/form/(.*))", [&](const httplib::Request &req,
+                                       httplib::Response &res) {
+      this->initializeSessionContext(req, res);
+
+      std::string actionName = req.matches[1];
+
+      // Parse payload
+      std::map<std::string, std::string> formData;
+      if (req.has_header("Content-Type") && 
+          req.get_header_value("Content-Type").find("application/json") != std::string::npos) {
+        formData = parseJsonMap(req.body);
+      } else {
+        for (const auto &param : req.params) {
+          formData[param.first] = param.second;
+        }
+      }
+
+      // Execute registered C++ form handler for this specific user session
+      if (form_callbacks.find(actionName) != form_callbacks.end()) {
+        form_callbacks[actionName](formData);
+      } else if (callbacks.find(actionName) != callbacks.end()) {
+        callbacks[actionName]();
+      }
+
+      // Check if this action targeted a specific component for partial render
+      std::string targetId = req.get_header_value("X-Nova-Target");
+
+      if (!targetId.empty() && components.find(targetId) != components.end()) {
+        // PARTIAL RENDER: Only re-render the targeted component
+        NovaBuilder partialBuilder;
+        components[targetId]->render(partialBuilder);
+        res.set_content(partialBuilder.generateHTML(false), "text/html");
+      } else {
+        // FULL RENDER: Re-render the active route for this session
         std::lock_guard<std::mutex> lock(this->builder_mutex);
         std::string sid = np::Context::current_session_id;
         std::string active_path = this->session_current_paths.count(sid)

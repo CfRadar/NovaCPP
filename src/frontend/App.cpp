@@ -519,6 +519,12 @@ void renderHomePage(np::NovaBuilder& np) {
         else quote = "DELETE Failed! Response: " + res;
     });
 
+    // Form submission action handler demonstrating two-way form binding
+    np.onForm("subscribe", [](const std::map<std::string, std::string>& data) {
+        std::string email = data.count("email") ? data.at("email") : "anonymous";
+        quote = "Subscribed successfully: " + email;
+    });
+
     // Render the Home Page Layout (12-Column Responsive Bento Grid)
     np << R"html(<div class="bento-grid">)html";
     
