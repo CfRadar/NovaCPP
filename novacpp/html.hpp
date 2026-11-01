@@ -15,10 +15,84 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <regex>
 #include "state.hpp"
 
 namespace np {
 class NovaBuilder;
+
+// Global context extension to track current route parameters
+namespace Context {
+    inline thread_local std::map<std::string, std::string> current_params;
+}
+
+// Dynamic route entry for parameterized URL matching
+struct RouteEntry {
+  std::string patternString;
+  std::regex regexPattern;
+  std::vector<std::string> paramNames;
+  std::function<void(NovaBuilder &, const std::map<std::string, std::string> &)> callback;
+  bool isDynamic = false;
+};
+
+// Result of resolving a requested path against registered routes
+struct RouteMatch {
+  bool matched = false;
+  std::function<void(NovaBuilder &, const std::map<std::string, std::string> &)> callback;
+  std::map<std::string, std::string> params;
+  std::string matchedPattern;
+};
+
+// Compiles patterns like "/users/:id" or "/users/{id}" into regular expressions
+inline bool compileRoutePattern(const std::string &pattern, std::regex &outRegex, std::vector<std::string> &outParams) {
+  outParams.clear();
+  std::string regexStr = "^";
+  size_t i = 0;
+  bool isDynamic = false;
+
+  while (i < pattern.length()) {
+    if (pattern[i] == '{') {
+      size_t close = pattern.find('}', i + 1);
+      if (close != std::string::npos) {
+        std::string pName = pattern.substr(i + 1, close - i - 1);
+        outParams.push_back(pName);
+        regexStr += "([^/]+)";
+        i = close + 1;
+        isDynamic = true;
+        continue;
+      }
+    } else if (pattern[i] == ':') {
+      size_t end = i + 1;
+      while (end < pattern.length() && (std::isalnum(static_cast<unsigned char>(pattern[end])) || pattern[end] == '_')) {
+        end++;
+      }
+      if (end > i + 1) {
+        std::string pName = pattern.substr(i + 1, end - i - 1);
+        outParams.push_back(pName);
+        regexStr += "([^/]+)";
+        i = end;
+        isDynamic = true;
+        continue;
+      }
+    }
+
+    char c = pattern[i];
+    if (c == '.' || c == '+' || c == '?' || c == '*' || c == '^' || c == '$' || c == '(' || c == ')' || c == '[' || c == ']' || c == '\\' || c == '|') {
+      regexStr += '\\';
+    }
+    regexStr += c;
+    i++;
+  }
+  regexStr += "$";
+  if (isDynamic) {
+    try {
+      outRegex = std::regex(regexStr);
+    } catch (...) {
+      return false;
+    }
+  }
+  return isDynamic;
+}
 
 // Component Interface for surgical DOM updates
 class Component {
@@ -167,7 +241,8 @@ private:
   std::map<std::string, std::function<void(const std::map<std::string, std::string>&)>> form_callbacks;
   std::map<std::string, Component *> components; // Map of registered components
   std::map<std::string, std::function<void(NovaBuilder &)>>
-      routes;                     // Registered pages
+      routes;                     // Registered static pages
+  std::vector<RouteEntry> dynamic_routes; // Registered dynamic routes
   std::string current_path = "/"; // Tracks fallback current SPA route
   std::map<std::string, std::string> session_current_paths; // Tracks active path per session
   std::mutex builder_mutex;       // Guards concurrent rendering and route state
@@ -251,10 +326,85 @@ public:
     callbacks["__onLoad"] = callback;
   }
 
-  // Register a route for the Single Page Application
+  // Register a route with parameter extraction (supports :param and {param})
+  void route(const std::string &pathPattern,
+             std::function<void(NovaBuilder &, const std::map<std::string, std::string> &)> renderCallback) {
+    std::regex compiledRegex;
+    std::vector<std::string> paramNames;
+    bool isDynamic = compileRoutePattern(pathPattern, compiledRegex, paramNames);
+
+    if (isDynamic) {
+      RouteEntry entry;
+      entry.patternString = pathPattern;
+      entry.regexPattern = compiledRegex;
+      entry.paramNames = paramNames;
+      entry.callback = renderCallback;
+      entry.isDynamic = true;
+      dynamic_routes.push_back(entry);
+    } else {
+      routes[pathPattern] = [renderCallback](NovaBuilder &builder) {
+        static const std::map<std::string, std::string> empty_params;
+        renderCallback(builder, empty_params);
+      };
+    }
+  }
+
+  // Register a route for the Single Page Application (backward-compatible overload)
   void route(const std::string &path,
              std::function<void(NovaBuilder &)> renderCallback) {
-    routes[path] = renderCallback;
+    std::regex compiledRegex;
+    std::vector<std::string> paramNames;
+    if (compileRoutePattern(path, compiledRegex, paramNames)) {
+      RouteEntry entry;
+      entry.patternString = path;
+      entry.regexPattern = compiledRegex;
+      entry.paramNames = paramNames;
+      entry.isDynamic = true;
+      entry.callback = [renderCallback](NovaBuilder &builder, const std::map<std::string, std::string> &) {
+        renderCallback(builder);
+      };
+      dynamic_routes.push_back(entry);
+    } else {
+      routes[path] = renderCallback;
+    }
+  }
+
+  // Access current route parameters
+  const std::map<std::string, std::string> &params() const {
+    return np::Context::current_params;
+  }
+
+  // Resolve a path against static and dynamic routes
+  RouteMatch resolveRoute(const std::string &path) {
+    RouteMatch match;
+    // 1. Fast path: exact literal match
+    auto it = routes.find(path);
+    if (it != routes.end()) {
+      match.matched = true;
+      match.matchedPattern = path;
+      auto cb = it->second;
+      match.callback = [cb](NovaBuilder &b, const std::map<std::string, std::string> &) {
+        cb(b);
+      };
+      return match;
+    }
+
+    // 2. Dynamic regex match in registration order
+    for (const auto &entry : dynamic_routes) {
+      std::smatch sm;
+      if (std::regex_match(path, sm, entry.regexPattern)) {
+        match.matched = true;
+        match.matchedPattern = entry.patternString;
+        match.callback = entry.callback;
+        for (size_t i = 0; i < entry.paramNames.size(); ++i) {
+          if (i + 1 < sm.size()) {
+            match.params[entry.paramNames[i]] = sm[i + 1].str();
+          }
+        }
+        return match;
+      }
+    }
+    return match;
   }
 
   // Register and render a modular component
@@ -554,7 +704,8 @@ public:
                std::string path = req.get_header_value("X-Nova-Path");
                std::string sid = np::Context::current_session_id;
 
-               if (routes.find(path) != routes.end()) {
+               RouteMatch rm = this->resolveRoute(path);
+               if (rm.matched) {
                  std::lock_guard<std::mutex> lock(this->builder_mutex);
                  this->session_current_paths[sid] = path;
                  this->current_path = path;
@@ -566,7 +717,8 @@ public:
                    callbacks["__onLoad"]();
                  }
 
-                 routes[path](*this);
+                 np::Context::current_params = rm.params;
+                 rm.callback(*this, rm.params);
                  // Return only inner HTML since it's an SPA transition
                  res.set_content(this->generateHTML(false), "text/html");
                } else {
@@ -602,8 +754,10 @@ public:
                                       ? this->session_current_paths[sid]
                                       : this->current_path;
         this->clear();
-        if (routes.find(active_path) != routes.end()) {
-          routes[active_path](*this);
+        RouteMatch rm = this->resolveRoute(active_path);
+        if (rm.matched) {
+          np::Context::current_params = rm.params;
+          rm.callback(*this, rm.params);
         }
         res.set_content(this->generateHTML(false), "text/html");
       }
@@ -650,8 +804,10 @@ public:
                                       ? this->session_current_paths[sid]
                                       : this->current_path;
         this->clear();
-        if (routes.find(active_path) != routes.end()) {
-          routes[active_path](*this);
+        RouteMatch rm = this->resolveRoute(active_path);
+        if (rm.matched) {
+          np::Context::current_params = rm.params;
+          rm.callback(*this, rm.params);
         }
         res.set_content(this->generateHTML(false), "text/html");
       }
@@ -685,7 +841,8 @@ public:
           path.rfind("/dist/", 0) == 0)
         return;
 
-      if (routes.find(path) != routes.end()) {
+      RouteMatch rm = this->resolveRoute(path);
+      if (rm.matched) {
         std::lock_guard<std::mutex> lock(this->builder_mutex);
         this->initializeSessionContext(req, res);
         std::string sid = np::Context::current_session_id;
@@ -697,7 +854,8 @@ public:
         }
 
         this->clear();
-        routes[path](*this);
+        np::Context::current_params = rm.params;
+        rm.callback(*this, rm.params);
         res.set_content(this->generateHTML(true), "text/html");
       } else {
         res.status = 404;

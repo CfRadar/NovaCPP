@@ -42,6 +42,27 @@ int main() {
     // 2. Register SPA UI Routes
     np.route("/", renderHomePage);
     np.route("/about", renderAboutPage);
+    np.route("/users/:id", [](np::NovaBuilder& app, const std::map<std::string, std::string>& params) {
+        std::string id = params.count("id") ? params.at("id") : "unknown";
+        app << "<div class='bento-grid'>"
+            << "  <div class='bento-card col-12'>"
+            << "    <h2>User Profile: " + id + "</h2>"
+            << "    <p>Dynamic route parameter successfully bound from URL.</p>"
+            << "    <a href='/' class='btn-primary' nova-link>&larr; Back to Home</a>"
+            << "  </div>"
+            << "</div>";
+    });
+    np.route("/orgs/{org}/repos/{repo}", [](np::NovaBuilder& app, const std::map<std::string, std::string>& params) {
+        std::string org = params.count("org") ? params.at("org") : "none";
+        std::string repo = params.count("repo") ? params.at("repo") : "none";
+        app << "<div class='bento-grid'>"
+            << "  <div class='bento-card col-12'>"
+            << "    <h2>Repository: " + org + "/" + repo + "</h2>"
+            << "    <p>Multi-parameter route successfully bound from URL.</p>"
+            << "    <a href='/' class='btn-primary' nova-link>&larr; Back to Home</a>"
+            << "  </div>"
+            << "</div>";
+    });
 
     // 3. Start the Live Server on the Cloud-provided PORT (or default to 8080)
     int port = 8080;
