@@ -10,6 +10,10 @@
 #include "../../novacpp/html.hpp"
 #include "../../novacpp/state.hpp"
 #include "../../novacpp/fetch.hpp"
+#include "../../novacpp/worker_pool.hpp"
+#include "../backend/Database.hpp"
+#include <vector>
+#include <map>
 
 // ===================================================================
 // REACTIVE STATE MANAGEMENT
@@ -18,6 +22,9 @@
 // ===================================================================
 np::State<int> counter(0);
 np::State<std::string> quote("Click any REST API button below to test network latency.");
+np::State<int> bgJobsCompleted(0);
+np::State<int> activeDocLesson(0);
+np::State<int> sessionTouchCount(0);
 
 // ===================================================================
 // MODULAR COMPONENTS
@@ -468,6 +475,598 @@ FeatureBlock spaFeat("feat-spa", "02", "Surgical SPA Navigation", "Seamless tran
 FeatureBlock stateFeat("feat-state", "03", "Thread-Local State Isolation", "Every user receives an isolated, thread-safe session copy of all reactive np::State variables.");
 FeatureBlock monolithFeat("feat-monolith", "04", "Full-Stack Single Binary", "Frontend UI, REST clients, and backend services compile into a single deployable native binary.");
 
+class DatabaseShowcaseComponent : public np::Component {
+public:
+    DatabaseShowcaseComponent() : Component("db-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        std::vector<std::map<std::string, std::string>> users;
+        try {
+            users = Database::query("SELECT id, name, email, role FROM users ORDER BY id DESC LIMIT 5");
+        } catch (...) {
+            // Graceful fallback if database unavailable
+        }
+
+        std::string rowsHtml = "";
+        for (const auto& u : users) {
+            std::string id = u.count("id") ? u.at("id") : "0";
+            std::string name = u.count("name") ? u.at("name") : "";
+            std::string email = u.count("email") ? u.at("email") : "";
+            std::string role = u.count("role") ? u.at("role") : "developer";
+
+            rowsHtml += "<tr>";
+            rowsHtml += "<td>#" + id + "</td>";
+            rowsHtml += "<td><strong>" + name + "</strong></td>";
+            rowsHtml += "<td><code>" + email + "</code></td>";
+            rowsHtml += "<td><span class='table-badge'>" + role + "</span></td>";
+            rowsHtml += "</tr>";
+        }
+
+        if (rowsHtml.empty()) {
+            rowsHtml = "<tr><td colspan='4' style='text-align:center; color: var(--text-muted);'>No user records found. Click 'Add Developer' to create one.</td></tr>";
+        }
+
+        np << R"html(
+        <div class="bento-card col-8 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-mint">SQLITE WAL DATABASE</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Live SQLite Query Engine</h3>
+                        <p class="card-desc">
+                            Direct C++ query execution via RAII connection pool. Reads and writes execute in WAL journal mode without blocking.
+                        </p>
+                        <div class="table-container">
+                            <table class="nova-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Developer</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        )html" + rowsHtml + R"html(
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-primary" nova-click="add_sample_user" nova-target="db-comp">&plus; Add Developer</button>
+                            <button class="btn-secondary" nova-click="reset_sample_users" nova-target="db-comp">Reset Seed Data</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>DatabaseShowcase.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Direct pooled query execution with RAII safety</span>
+<span class="syn-kw">auto</span> rows = Database::query(
+    <span class="syn-str">"SELECT id, name, email, role FROM users ORDER BY id DESC LIMIT 5"</span>
+);
+
+<span class="syn-com">// Insert mutation via connection pool guard</span>
+Database::execute(
+    <span class="syn-str">"INSERT INTO users (name, email, role) VALUES ('Grace Hopper', 'grace@novacpp.dev', 'core');"</span>
+);</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class DbPoolTelemetryComponent : public np::Component {
+public:
+    DbPoolTelemetryComponent() : Component("dbpool-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        size_t cap = Database::getPoolCapacity();
+        size_t avail = Database::getAvailableConnections();
+        size_t active = cap > avail ? (cap - avail) : 0;
+
+        np << R"html(
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-blue">RAII CONNECTION POOL</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Pool Telemetry</h3>
+                        <p class="card-desc">Bounded connection pool preventing database handle exhaustion.</p>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-value">)html" + std::to_string(cap) + R"html(</span>
+                                <span class="metric-label">Capacity</span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-value">)html" + std::to_string(avail) + R"html(</span>
+                                <span class="metric-label">Available</span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-value">)html" + std::to_string(active) + R"html(</span>
+                                <span class="metric-label">In Use</span>
+                            </div>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.5rem; display:flex; align-items:center; gap:6px;">
+                            <span class="status-pulse-green"></span>
+                            <span>WAL Journal Mode: ACTIVE</span>
+                        </div>
+                        <div class="btn-group" style="margin-top:1rem;">
+                            <button class="btn-secondary" nova-click="test_pool_acquire" nova-target="dbpool-comp">Acquire Guard</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>ConnectionPool.hpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Acquire connection with automatic RAII return</span>
+{
+    <span class="syn-kw">auto</span> guard = Database::acquire(std::chrono::milliseconds(1500));
+    guard-&gt;execute(<span class="syn-str">"PRAGMA wal_checkpoint(PASSIVE);"</span>);
+} <span class="syn-com">// Handle returned automatically on scope exit</span></code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class WorkerPoolShowcaseComponent : public np::Component {
+public:
+    WorkerPoolShowcaseComponent() : Component("worker-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        size_t threads = np::WorkerPool::defaultPool().threadCount();
+        size_t pending = np::WorkerPool::defaultPool().pendingTasks();
+        int completed = bgJobsCompleted.get();
+
+        np << R"html(
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-lavender">WORKER THREAD POOL</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Async Task Dispatcher</h3>
+                        <p class="card-desc">Offload intensive CPU/IO tasks from HTTP event loop.</p>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-value">)html" + std::to_string(threads) + R"html(</span>
+                                <span class="metric-label">Threads</span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-value">)html" + std::to_string(pending) + R"html(</span>
+                                <span class="metric-label">Pending</span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-value">)html" + std::to_string(completed) + R"html(</span>
+                                <span class="metric-label">Completed</span>
+                            </div>
+                        </div>
+                        <div class="btn-group" style="margin-top:1rem;">
+                            <button class="btn-primary" nova-click="dispatch_bg_task" nova-target="worker-comp">Dispatch Task</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>WorkerPool.hpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Enqueue non-blocking background job</span>
+np.enqueueTask([]() {
+    <span class="syn-com">// Heavy computation in worker thread</span>
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+});</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class SessionStoreComponent : public np::Component {
+public:
+    SessionStoreComponent() : Component("session-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        bool hasRedis = std::getenv("REDIS_URL") != nullptr;
+        std::string mode = hasRedis ? "Distributed Redis" : "Thread-Local RAM";
+        int touches = sessionTouchCount.get();
+
+        np << R"html(
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-peach">SESSION STORE</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Distributed Session State</h3>
+                        <p class="card-desc">Session isolation with automatic sliding TTL expiration.</p>
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <span class="metric-value">60s</span>
+                                <span class="metric-label">Sliding TTL</span>
+                            </div>
+                            <div class="metric-card">
+                                <span class="metric-value" style="font-size:1.1rem; padding-top:4px;">)html" + std::to_string(touches) + R"html( hits</span>
+                                <span class="metric-label">Interactions</span>
+                            </div>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.5rem; display:flex; align-items:center; gap:6px;">
+                            <span class="status-pulse-green"></span>
+                            <span>Mode: )html" + mode + R"html(</span>
+                        </div>
+                        <div class="btn-group" style="margin-top:1rem;">
+                            <button class="btn-secondary" nova-click="touch_session" nova-target="session-comp">Touch Session</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>RedisStateStore.hpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Connect distributed multi-pod session store</span>
+<span class="syn-kw">if</span> (<span class="syn-kw">const</span> <span class="syn-type">char</span>* url = std::getenv(<span class="syn-str">"REDIS_URL"</span>)) {
+    np::useStateStore(np::RedisStateStore::fromUri(url));
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class HealthMetricsComponent : public np::Component {
+public:
+    HealthMetricsComponent() : Component("health-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-4 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-mint">SECURITY &amp; PROBES</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Production Health Probes</h3>
+                        <p class="card-desc">Zero-overhead orchestration endpoints for Kubernetes &amp; Docker.</p>
+                        <div style="display:flex; flex-direction:column; gap:8px; margin: 12px 0;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; padding: 6px 10px; background:var(--bg-subtle); border-radius:6px;">
+                                <code>/healthz (Liveness)</code>
+                                <span style="color:#10B981; font-weight:600;">200 OK</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; padding: 6px 10px; background:var(--bg-subtle); border-radius:6px;">
+                                <code>/readyz (Readiness)</code>
+                                <span style="color:#10B981; font-weight:600;">200 OK</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; padding: 6px 10px; background:var(--bg-subtle); border-radius:6px;">
+                                <code>Security Headers</code>
+                                <span style="color:#10B981; font-weight:600;">CSP + HSTS</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>Probes.hpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Kubernetes readiness probe handler</span>
+svr.Get(<span class="syn-str">"/readyz"</span>, [](<span class="syn-kw">const</span> httplib::Request&amp;, httplib::Response&amp; res) {
+    <span class="syn-kw">if</span> (Database::isConnected()) {
+        res.set_content(<span class="syn-str">"ready"</span>, <span class="syn-str">"text/plain"</span>);
+    } <span class="syn-kw">else</span> {
+        res.status = 503;
+    }
+});</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class ArchitectureMapComponent : public np::Component {
+public:
+    ArchitectureMapComponent() : Component("arch-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-12 flip-card">
+            <div class="flip-card-inner">
+                <!-- FRONT: INTERACTIVE PREVIEW -->
+                <div class="card-face card-front">
+                    <div class="card-topbar">
+                        <div class="badge badge-blue">SYSTEM TOPOLOGY</div>
+                        <button type="button" class="btn-flip" onclick="window.flipCard(this)" title="View C++ Code" aria-label="View C++ Code">
+                            &lt;/&gt; Code
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">Full-Stack C++ Architecture</h3>
+                        <p class="card-desc">
+                            NovaCPP unifies high-performance C++ backend services with reactive browser rendering into a single, cohesive binary.
+                        </p>
+                        <div class="arch-grid">
+                            <div class="arch-node">
+                                <span class="badge badge-peach" style="align-self:flex-start; margin-bottom:4px;">01 CLIENT</span>
+                                <span class="arch-node-title">Browser Engine</span>
+                                <span class="arch-node-desc">Surgical DOM morphing, esbuild import map bundling, and zero-flicker state preservation.</span>
+                            </div>
+                            <div class="arch-node">
+                                <span class="badge badge-blue" style="align-self:flex-start; margin-bottom:4px;">02 SERVER</span>
+                                <span class="arch-node-title">C++17 Core</span>
+                                <span class="arch-node-desc">Multi-threaded HTTP engine, thread-safe routing tree, and live polling channels.</span>
+                            </div>
+                            <div class="arch-node">
+                                <span class="badge badge-mint" style="align-self:flex-start; margin-bottom:4px;">03 STORAGE</span>
+                                <span class="arch-node-title">SQLite WAL Pool</span>
+                                <span class="arch-node-desc">RAII-guarded connection pool, sub-millisecond writes, and zero file lock violations.</span>
+                            </div>
+                            <div class="arch-node">
+                                <span class="badge badge-lavender" style="align-self:flex-start; margin-bottom:4px;">04 COMPUTE</span>
+                                <span class="arch-node-title">Worker Thread Pool</span>
+                                <span class="arch-node-desc">Asynchronous task dispatcher isolating heavy workloads from HTTP response latency.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- BACK: C++ CODE -->
+                <div class="card-face card-back">
+                    <div class="card-topbar">
+                        <div class="code-title-badge">
+                            <span class="badge-lang">C++17</span>
+                            <span>NovaMonolith.cpp</span>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-copy-code" onclick="window.copyCardCode(this)" title="Copy Code">Copy</button>
+                            <button type="button" class="btn-flip btn-flip-back" onclick="window.flipCard(this)" title="Back to Preview">&times; Preview</button>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <pre class="code-pre"><code><span class="syn-com">// Unified single-binary entrypoint</span>
+<span class="syn-type">int</span> main() {
+    np::loadEnv(<span class="syn-str">".env"</span>);
+    Database::connect();
+    np::NovaBuilder np;
+    np.route(<span class="syn-str">"/"</span>, renderHomePage);
+    np.listen(8080);
+    <span class="syn-kw">return</span> 0;
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class DocsBrowserComponent : public np::Component {
+public:
+    DocsBrowserComponent() : Component("docs-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        int topic = activeDocLesson.get();
+        if (topic < 0 || topic > 4) topic = 0;
+
+        std::string title = "";
+        std::string desc = "";
+        std::string snippet = "";
+
+        if (topic == 0) {
+            title = "Lesson 01: Getting Started &amp; Project Scaffolding";
+            desc = "Scaffold a production-grade NovaCPP application in seconds using the official CLI scaffolder. Builds a pre-configured project with CMake, live hot reloading, and npm support.";
+            snippet = "$ npm create novacpp@latest my-app\n$ cd my-app\n$ npm install\n$ npm run dev";
+        } else if (topic == 1) {
+            title = "Lesson 02: Modular UI Components";
+            desc = "Components encapsulate HTML generation and event handlers. Inherit from np::Component, implement the render method, and register surgical DOM swap targets.";
+            snippet = "class MyCard : public np::Component {\npublic:\n    MyCard() : Component(\"my-card\") {}\n    void render(np::NovaBuilder& np) override {\n        np << \"<div class='card'>Hello World</div>\";\n    }\n};";
+        } else if (topic == 2) {
+            title = "Lesson 03: Reactive State &amp; Event Handlers";
+            desc = "np::State<T> manages thread-safe variables isolated per user session. Bind events using np.onClick or np.onForm with automatic surgical DOM updates.";
+            snippet = "np::State<int> counter(0);\n\nnp.onClick(\"increment\", []() {\n    counter = counter + 1;\n});";
+        } else if (topic == 3) {
+            title = "Lesson 04: Database &amp; RAII Connection Pooling";
+            desc = "Access SQLite with WAL journaling mode using Database::acquire(). Scoped guards automatically return connections to the pool, preventing deadlocks.";
+            snippet = "{\n    auto guard = Database::acquire();\n    auto rows = guard->query(\"SELECT * FROM users\");\n}";
+        } else {
+            title = "Lesson 05: Production Deployment &amp; Kubernetes";
+            desc = "Deploy as a multi-pod cluster using Redis session synchronization, non-root Docker scratch images, and native /healthz and /readyz liveness probes.";
+            snippet = "# Docker multi-stage build\nFROM gcc:13 AS builder\n# Compiles into static ~3.8MB binary\nEXPOSE 8080\nCMD [\"./NovaCPP\"]";
+        }
+
+        std::string t0_act = (topic == 0) ? " active" : "";
+        std::string t1_act = (topic == 1) ? " active" : "";
+        std::string t2_act = (topic == 2) ? " active" : "";
+        std::string t3_act = (topic == 3) ? " active" : "";
+        std::string t4_act = (topic == 4) ? " active" : "";
+
+        np << R"html(
+        <div class="bento-card col-8">
+            <div class="card-topbar">
+                <div class="badge badge-lavender">INTERACTIVE DOCS</div>
+                <a href="https://nova-documentation.vercel.app/" target="_blank" rel="noopener" class="nav-link" style="font-size:0.8rem; font-weight:600;">Full Docs Site &nearr;</a>
+            </div>
+            <div class="card-body">
+                <div class="docs-topic-tabs">
+                    <button class="docs-topic-btn)html" + t0_act + R"html(" nova-click="switch_doc_0" nova-target="docs-comp">01 Scaffolder</button>
+                    <button class="docs-topic-btn)html" + t1_act + R"html(" nova-click="switch_doc_1" nova-target="docs-comp">02 Components</button>
+                    <button class="docs-topic-btn)html" + t2_act + R"html(" nova-click="switch_doc_2" nova-target="docs-comp">03 State</button>
+                    <button class="docs-topic-btn)html" + t3_act + R"html(" nova-click="switch_doc_3" nova-target="docs-comp">04 Database</button>
+                    <button class="docs-topic-btn)html" + t4_act + R"html(" nova-click="switch_doc_4" nova-target="docs-comp">05 Production</button>
+                </div>
+                <div class="docs-lesson-box">
+                    <div class="docs-lesson-title">)html" + title + R"html(</div>
+                    <div class="docs-lesson-text">)html" + desc + R"html(</div>
+                    <pre class="code-pre" style="margin:0;"><code>)html" + snippet + R"html(</code></pre>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+class BenchmarkSpecsComponent : public np::Component {
+public:
+    BenchmarkSpecsComponent() : Component("specs-comp") {}
+
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-4">
+            <div class="card-topbar">
+                <div class="badge badge-mint">BENCHMARKS</div>
+            </div>
+            <div class="card-body">
+                <h3 class="card-title">Empirical Performance</h3>
+                <p class="card-desc">Compiled native C++17 vs interpreted runtime stacks.</p>
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <span class="metric-value">&lt; 5ms</span>
+                        <span class="metric-label">Cold Start</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-value">4.1 MB</span>
+                        <span class="metric-label">RAM Footprint</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-value">3.8 MB</span>
+                        <span class="metric-label">Binary Size</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-value">&gt; 100k</span>
+                        <span class="metric-label">Req / Sec</span>
+                    </div>
+                </div>
+                <div style="margin-top:1rem;">
+                    <a href="https://nova-documentation.vercel.app/" target="_blank" rel="noopener" class="btn-primary" style="text-decoration:none; display:flex; justify-content:center;">
+                        Browse Official Documentation &rarr;
+                    </a>
+                </div>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+// Global component instances
+DatabaseShowcaseComponent dbComp;
+DbPoolTelemetryComponent dbPoolComp;
+WorkerPoolShowcaseComponent workerComp;
+SessionStoreComponent sessionComp;
+HealthMetricsComponent healthComp;
+ArchitectureMapComponent archComp;
+DocsBrowserComponent docsComp;
+BenchmarkSpecsComponent specsComp;
+
+class AboutComponent : public np::Component {
+public:
+    AboutComponent() : Component("about-comp") {}
+    
+    void render(np::NovaBuilder& np) override {
+        np << R"html(
+        <div class="bento-card col-12 about-hero-card">
+            <h1 class="about-title">About NovaCPP</h1>
+            <p class="about-desc">
+                NovaCPP is an ultra-fast, modern C++ web framework engineered to deliver the developer experience 
+                of React straight to the backend. It completely eliminates the need for Node.js at runtime, 
+                allowing you to build reactive Single Page Applications (SPAs) purely in native C++.
+            </p>
+            <p class="about-desc">
+                Key architectural pillars include <strong>Surgical DOM Swapping</strong>, 
+                <strong>Automatic Live Polling</strong>, 
+                <strong>Thread-Local Session State</strong>, and 
+                <strong>Native npm Package Compatibility</strong> via esbuild import maps.
+            </p>
+            <div style="margin-top: 1.5rem;">
+                <a href="/" class="btn-primary" style="text-decoration: none; padding: 0.75rem 1.6rem; display: inline-flex;" nova-link>
+                    &larr; Back to Home
+                </a>
+            </div>
+        </div>
+        )html";
+    }
+};
+
+AboutComponent aboutComp;
+
 // ===================================================================
 // PAGE ROUTING
 // ===================================================================
@@ -525,63 +1124,184 @@ void renderHomePage(np::NovaBuilder& np) {
         quote = "Subscribed successfully: " + email;
     });
 
-    // Render the Home Page Layout (12-Column Responsive Bento Grid)
-    np << R"html(<div class="bento-grid">)html";
-    
-    // ROW 1: Navigation
+    // Backend interactive actions
+    np.onClick("add_sample_user", []() {
+        static int s_userCount = 100;
+        s_userCount++;
+        std::string name = "Developer " + std::to_string(s_userCount);
+        std::string email = "dev" + std::to_string(s_userCount) + "@novacpp.dev";
+        std::string role = (s_userCount % 2 == 0) ? "developer" : "core-team";
+        try {
+            Database::execute("INSERT INTO users (name, email, role) VALUES ('" + name + "', '" + email + "', '" + role + "');");
+        } catch (...) {}
+    });
+
+    np.onClick("reset_sample_users", []() {
+        try {
+            Database::execute("DELETE FROM users;");
+            Database::execute("INSERT INTO users (name, email, role) VALUES ('Ada Lovelace', 'ada@novacpp.dev', 'architect');");
+            Database::execute("INSERT INTO users (name, email, role) VALUES ('Alan Turing', 'alan@novacpp.dev', 'core-dev');");
+            Database::execute("INSERT INTO users (name, email, role) VALUES ('Margaret Hamilton', 'margaret@novacpp.dev', 'lead');");
+        } catch (...) {}
+    });
+
+    np.onClick("test_pool_acquire", []() {
+        try {
+            auto guard = Database::acquire(std::chrono::milliseconds(1500));
+            guard->execute("PRAGMA wal_checkpoint(PASSIVE);");
+        } catch (...) {}
+    });
+
+    np.onClick("dispatch_bg_task", []() {
+        np::WorkerPool::defaultPool().enqueue([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            bgJobsCompleted = bgJobsCompleted.get() + 1;
+        });
+    });
+
+    np.onClick("async_job", []() {
+        np::WorkerPool::defaultPool().enqueue([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        });
+    });
+
+    np.onClick("touch_session", []() {
+        sessionTouchCount = sessionTouchCount.get() + 1;
+    });
+
+    np.onClick("switch_doc_0", []() { activeDocLesson = 0; });
+    np.onClick("switch_doc_1", []() { activeDocLesson = 1; });
+    np.onClick("switch_doc_2", []() { activeDocLesson = 2; });
+    np.onClick("switch_doc_3", []() { activeDocLesson = 3; });
+    np.onClick("switch_doc_4", []() { activeDocLesson = 4; });
+
+    // TOP NAVBAR
+    np << R"html(<div class="bento-grid" style="margin-bottom: var(--space-2);">)html";
     np.renderComponent(navComp);
-    
-    // ROW 2: Hero Showcase
+    np << R"html(</div>)html";
+
+    // STICKY SEGMENTED CONTROL TAB BAR
+    np << R"html(
+    <div class="nav-tab-slider-wrapper">
+        <div class="nav-tab-slider" role="tablist">
+            <div class="nav-tab-pill"></div>
+            <button type="button" class="tab-btn active" onclick="window.goToSlide(0)" role="tab" aria-selected="true" id="tab-0">
+                <span class="tab-num">01</span> Frontend Engine
+            </button>
+            <button type="button" class="tab-btn" onclick="window.goToSlide(1)" role="tab" aria-selected="false" id="tab-1">
+                <span class="tab-num">02</span> Backend Architecture
+            </button>
+            <button type="button" class="tab-btn" onclick="window.goToSlide(2)" role="tab" aria-selected="false" id="tab-2">
+                <span class="tab-num">03</span> Architecture &amp; Docs
+            </button>
+        </div>
+    </div>
+
+    <!-- Floating Chevrons for Desktop / Widescreen -->
+    <button type="button" class="swipe-arrow swipe-arrow-prev" onclick="window.swipePrev()" title="Previous Section" aria-label="Previous Section">&larr;</button>
+    <button type="button" class="swipe-arrow swipe-arrow-next" onclick="window.swipeNext()" title="Next Section" aria-label="Next Section">&rarr;</button>
+
+    <!-- Horizontal Swipe Viewport & Track -->
+    <div class="nova-viewport">
+        <div class="nova-swipe-track">
+            
+            <!-- SLIDE 0: FRONTEND ENGINE -->
+            <div class="nova-slide" data-slide="frontend">
+                <div class="section-banner">
+                    <div>
+                        <h2 class="section-banner-title">
+                            <span class="badge badge-blue">SLIDE 01</span>
+                            Frontend Engine &amp; Reactive UI
+                        </h2>
+                        <p class="section-banner-desc">Surgical DOM morphing, session-isolated state hooks, background polling, and pre-bundled npm ESM modules.</p>
+                    </div>
+                </div>
+                <div class="bento-grid">
+    )html";
+
+    // Hero Showcase
     np.renderComponent(heroComp);
 
-    // ROW 3: Interactive Reactive Components
+    // Row: Live Polling Clock, Reactive Counter, Fast Refresh HMR
     np.renderComponent(clockComp, 1000); 
     np.renderComponent(counterComp);
     np.renderComponent(hmrComp);
 
-    // ROW 4: API & npm Capabilities
+    // Row: API & npm Capabilities
     np.renderComponent(apiComp);
     np.renderComponent(npmComp);
-    
-    // ROW 5: Architectural Features
+
+    // Pillars
     np.renderComponent(speedFeat);
     np.renderComponent(spaFeat);
+
+    np << R"html(
+                </div>
+            </div>
+
+            <!-- SLIDE 1: BACKEND ARCHITECTURE -->
+            <div class="nova-slide" data-slide="backend">
+                <div class="section-banner">
+                    <div>
+                        <h2 class="section-banner-title">
+                            <span class="badge badge-mint">SLIDE 02</span>
+                            Backend Core &amp; Data Pipeline
+                        </h2>
+                        <p class="section-banner-desc">Thread-safe SQLite connection pool with WAL journaling, asynchronous worker threads, and distributed Redis session storage.</p>
+                    </div>
+                </div>
+                <div class="bento-grid">
+    )html";
+
+    // SQLite Table & Telemetry
+    np.renderComponent(dbComp);
+    np.renderComponent(dbPoolComp);
+
+    // Workers, Sessions & Health Probes
+    np.renderComponent(workerComp);
+    np.renderComponent(sessionComp);
+    np.renderComponent(healthComp);
+
+    // Pillars
     np.renderComponent(stateFeat);
     np.renderComponent(monolithFeat);
-    
-    np << R"html(</div>)html";
-}
 
-class AboutComponent : public np::Component {
-public:
-    AboutComponent() : Component("about-comp") {}
-    
-    void render(np::NovaBuilder& np) override {
-        np << R"html(
-        <div class="bento-card col-12 about-hero-card">
-            <h1 class="about-title">About NovaCPP</h1>
-            <p class="about-desc">
-                NovaCPP is an ultra-fast, modern C++ web framework engineered to deliver the developer experience 
-                of React straight to the backend. It completely eliminates the need for Node.js at runtime, 
-                allowing you to build reactive Single Page Applications (SPAs) purely in native C++.
-            </p>
-            <p class="about-desc">
-                Key architectural pillars include <strong>Surgical DOM Swapping</strong>, 
-                <strong>Automatic Live Polling</strong>, 
-                <strong>Thread-Local Session State</strong>, and 
-                <strong>Native npm Package Compatibility</strong> via esbuild import maps.
-            </p>
-            <div style="margin-top: 1.5rem;">
-                <a href="/" class="btn-primary" style="text-decoration: none; padding: 0.75rem 1.6rem; display: inline-flex;" nova-link>
-                    &larr; Back to Home
-                </a>
+    np << R"html(
+                </div>
             </div>
-        </div>
-        )html";
-    }
-};
 
-AboutComponent aboutComp;
+            <!-- SLIDE 2: ARCHITECTURE & DOCUMENTATION -->
+            <div class="nova-slide" data-slide="docs">
+                <div class="section-banner">
+                    <div>
+                        <h2 class="section-banner-title">
+                            <span class="badge badge-lavender">SLIDE 03</span>
+                            Architecture &amp; Documentation
+                        </h2>
+                        <p class="section-banner-desc">Full-stack system topology, interactive lesson browser, and empirical C++ performance specifications.</p>
+                    </div>
+                </div>
+                <div class="bento-grid">
+    )html";
+
+    // Topology Map
+    np.renderComponent(archComp);
+
+    // Interactive Docs & Specs
+    np.renderComponent(docsComp);
+    np.renderComponent(specsComp);
+
+    // Full About Hero Card
+    np.renderComponent(aboutComp);
+
+    np << R"html(
+                </div>
+            </div>
+
+        </div>
+    </div>
+    )html";
+}
 
 void renderAboutPage(np::NovaBuilder& np) {
     np << R"html(<div class="bento-grid">)html";

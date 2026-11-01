@@ -104,3 +104,4 @@ inline bool loadEnv(const std::string& envPath = ".env", bool overwrite = false)
 }
 
 } // namespace np
+

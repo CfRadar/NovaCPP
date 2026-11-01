@@ -72,7 +72,7 @@ window.copyCardCode = async (btn) => {
     try {
         await navigator.clipboard.writeText(codeText.trim());
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<span>✓ Copied!</span>';
+        btn.innerHTML = '<span>Copied!</span>';
         btn.classList.add('copied');
         setTimeout(() => {
             btn.innerHTML = originalHtml;

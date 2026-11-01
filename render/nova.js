@@ -357,8 +357,149 @@ function applyDomUpdates(html, targetId, isMultiTarget) {
             setupPolling();
             setupWidgets(root);
             triggerServerEffects(root);
+            setupSwipeGestures();
+            updateSwipeUi();
         }
     }
+}
+
+// ============================================================================
+// HORIZONTAL SWIPE CAROUSEL & SECTION NAVIGATION
+// ============================================================================
+window._novaCurrentSlide = window._novaCurrentSlide || 0;
+
+function getSlideCount() {
+    const track = document.querySelector('.nova-swipe-track');
+    return track ? track.children.length : 3;
+}
+
+function updateSwipeUi() {
+    const track = document.querySelector('.nova-swipe-track');
+    const tabs = document.querySelectorAll('.nav-tab-slider .tab-btn');
+    const pill = document.querySelector('.nav-tab-slider .nav-tab-pill');
+    const prevBtn = document.querySelector('.swipe-arrow-prev');
+    const nextBtn = document.querySelector('.swipe-arrow-next');
+
+    if (!track) return;
+
+    const total = getSlideCount();
+    let current = window._novaCurrentSlide || 0;
+    if (current < 0) current = 0;
+    if (current >= total) current = total - 1;
+    window._novaCurrentSlide = current;
+
+    // Slide track: each slide is 100% of viewport, track is total * 100% wide
+    track.style.transform = `translateX(-${current * (100 / total)}%)`;
+
+    tabs.forEach((tab, idx) => {
+        const isActive = idx === current;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    if (pill && tabs[current]) {
+        const activeTab = tabs[current];
+        pill.style.left = `${activeTab.offsetLeft}px`;
+        pill.style.width = `${activeTab.offsetWidth}px`;
+    }
+
+    if (prevBtn) prevBtn.style.opacity = current === 0 ? '0.35' : '1';
+    if (nextBtn) nextBtn.style.opacity = current === total - 1 ? '0.35' : '1';
+
+    const hashes = ['#frontend', '#backend', '#docs'];
+    if (window.history && window.history.replaceState && hashes[current]) {
+        window.history.replaceState(null, null, hashes[current]);
+    }
+}
+
+window.goToSlide = function(index) {
+    const total = getSlideCount();
+    if (index >= 0 && index < total) {
+        window._novaCurrentSlide = index;
+        updateSwipeUi();
+    }
+};
+
+window.swipeNext = function() {
+    const total = getSlideCount();
+    if (window._novaCurrentSlide < total - 1) {
+        window.goToSlide(window._novaCurrentSlide + 1);
+    }
+};
+
+window.swipePrev = function() {
+    if (window._novaCurrentSlide > 0) {
+        window.goToSlide(window._novaCurrentSlide - 1);
+    }
+};
+
+function setupSwipeGestures() {
+    const viewport = document.querySelector('.nova-viewport');
+    if (!viewport || viewport._swipeGestureBound) return;
+    viewport._swipeGestureBound = true;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchEndX = 0;
+    let touchEndY = 0;
+
+    viewport.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    viewport.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
+            if (deltaX < 0) {
+                window.swipeNext();
+            } else {
+                window.swipePrev();
+            }
+        }
+    }, { passive: true });
+}
+
+function syncSlideFromHash() {
+    const hash = window.location.hash.toLowerCase();
+    if (hash === '#backend') {
+        window._novaCurrentSlide = 1;
+    } else if (hash === '#docs' || hash === '#about') {
+        window._novaCurrentSlide = 2;
+    } else if (hash === '#frontend') {
+        window._novaCurrentSlide = 0;
+    }
+    updateSwipeUi();
+}
+
+if (typeof window !== 'undefined' && !window._novaSwipeListenersAttached) {
+    window._novaSwipeListenersAttached = true;
+
+    window.addEventListener('keydown', (e) => {
+        const activeTag = document.activeElement ? document.activeElement.tagName : '';
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable)) {
+            return;
+        }
+
+        if (e.key === 'ArrowRight') {
+            window.swipeNext();
+        } else if (e.key === 'ArrowLeft') {
+            window.swipePrev();
+        }
+    });
+
+    window.addEventListener('hashchange', () => {
+        syncSlideFromHash();
+    });
+
+    window.addEventListener('resize', () => {
+        updateSwipeUi();
+    });
 }
 
 // Run setup polling, widgets, effects, and HMR on initial page load
@@ -367,7 +508,19 @@ window.addEventListener('DOMContentLoaded', () => {
     setupWidgets();
     triggerServerEffects();
     initHMR();
+    setupSwipeGestures();
+    syncSlideFromHash();
 });
+
+window.addEventListener('load', () => {
+    updateSwipeUi();
+});
+
+if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+        updateSwipeUi();
+    });
+}
 
 // Handle browser Back/Forward buttons
 window.addEventListener('popstate', () => {

@@ -49,6 +49,14 @@ int main() {
         "  role TEXT DEFAULT 'developer'"
         ");"
     );
+
+    // Seed initial demonstration records if table is fresh
+    if (Database::query("SELECT id FROM users LIMIT 1").empty()) {
+        Database::execute("INSERT INTO users (name, email, role) VALUES ('Ada Lovelace', 'ada@novacpp.dev', 'architect');");
+        Database::execute("INSERT INTO users (name, email, role) VALUES ('Alan Turing', 'alan@novacpp.dev', 'core-dev');");
+        Database::execute("INSERT INTO users (name, email, role) VALUES ('Margaret Hamilton', 'margaret@novacpp.dev', 'lead');");
+    }
+
     Auth::initializeSessions();
     
     // 2. Register SPA UI Routes
