@@ -3,6 +3,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <map>
 #include <mutex>
 #include <queue>
@@ -738,29 +739,57 @@ public:
         callbacks[actionName]();
       }
 
-      // Check if this action targeted a specific component
+      // Check if this action targeted specific component(s)
       std::string targetId = req.get_header_value("X-Nova-Target");
 
-      if (!targetId.empty() && components.find(targetId) != components.end()) {
-        // PARTIAL RENDER: Only re-render the targeted component
-        NovaBuilder partialBuilder;
-        components[targetId]->render(partialBuilder);
-        res.set_content(partialBuilder.generateHTML(false), "text/html");
-      } else {
-        // FULL RENDER: Re-render the current route for this specific session
-        std::lock_guard<std::mutex> lock(this->builder_mutex);
-        std::string sid = np::Context::current_session_id;
-        std::string active_path = this->session_current_paths.count(sid)
-                                      ? this->session_current_paths[sid]
-                                      : this->current_path;
-        this->clear();
-        RouteMatch rm = this->resolveRoute(active_path);
-        if (rm.matched) {
-          np::Context::current_params = rm.params;
-          rm.callback(*this, rm.params);
+      if (!targetId.empty()) {
+        if (targetId.find(',') != std::string::npos) {
+          // MULTI-TARGET SWAP
+          std::stringstream ss(targetId);
+          std::string token;
+          std::string multiHtml;
+          bool matchedAny = false;
+          while (std::getline(ss, token, ',')) {
+            size_t first = token.find_first_not_of(" \t\r\n");
+            if (first == std::string::npos) continue;
+            size_t last = token.find_last_not_of(" \t\r\n");
+            std::string cleanId = token.substr(first, (last - first + 1));
+            if (components.find(cleanId) != components.end()) {
+              NovaBuilder partialBuilder;
+              components[cleanId]->render(partialBuilder);
+              multiHtml += "<template data-nova-swap=\"" + cleanId + "\">" +
+                           partialBuilder.generateHTML(false) +
+                           "</template>\n";
+              matchedAny = true;
+            }
+          }
+          if (matchedAny) {
+            res.set_header("X-Nova-Multi-Target", "true");
+            res.set_content(multiHtml, "text/html");
+            return;
+          }
+        } else if (components.find(targetId) != components.end()) {
+          // SINGLE-TARGET PARTIAL RENDER
+          NovaBuilder partialBuilder;
+          components[targetId]->render(partialBuilder);
+          res.set_content(partialBuilder.generateHTML(false), "text/html");
+          return;
         }
-        res.set_content(this->generateHTML(false), "text/html");
       }
+
+      // FULL RENDER: Re-render the current route for this specific session
+      std::lock_guard<std::mutex> lock(this->builder_mutex);
+      std::string sid = np::Context::current_session_id;
+      std::string active_path = this->session_current_paths.count(sid)
+                                    ? this->session_current_paths[sid]
+                                    : this->current_path;
+      this->clear();
+      RouteMatch rm = this->resolveRoute(active_path);
+      if (rm.matched) {
+        np::Context::current_params = rm.params;
+        rm.callback(*this, rm.params);
+      }
+      res.set_content(this->generateHTML(false), "text/html");
     });
 
     // The form route handles serialized form submissions from the browser
@@ -788,29 +817,57 @@ public:
         callbacks[actionName]();
       }
 
-      // Check if this action targeted a specific component for partial render
+      // Check if this action targeted specific component(s) for partial render
       std::string targetId = req.get_header_value("X-Nova-Target");
 
-      if (!targetId.empty() && components.find(targetId) != components.end()) {
-        // PARTIAL RENDER: Only re-render the targeted component
-        NovaBuilder partialBuilder;
-        components[targetId]->render(partialBuilder);
-        res.set_content(partialBuilder.generateHTML(false), "text/html");
-      } else {
-        // FULL RENDER: Re-render the active route for this session
-        std::lock_guard<std::mutex> lock(this->builder_mutex);
-        std::string sid = np::Context::current_session_id;
-        std::string active_path = this->session_current_paths.count(sid)
-                                      ? this->session_current_paths[sid]
-                                      : this->current_path;
-        this->clear();
-        RouteMatch rm = this->resolveRoute(active_path);
-        if (rm.matched) {
-          np::Context::current_params = rm.params;
-          rm.callback(*this, rm.params);
+      if (!targetId.empty()) {
+        if (targetId.find(',') != std::string::npos) {
+          // MULTI-TARGET SWAP
+          std::stringstream ss(targetId);
+          std::string token;
+          std::string multiHtml;
+          bool matchedAny = false;
+          while (std::getline(ss, token, ',')) {
+            size_t first = token.find_first_not_of(" \t\r\n");
+            if (first == std::string::npos) continue;
+            size_t last = token.find_last_not_of(" \t\r\n");
+            std::string cleanId = token.substr(first, (last - first + 1));
+            if (components.find(cleanId) != components.end()) {
+              NovaBuilder partialBuilder;
+              components[cleanId]->render(partialBuilder);
+              multiHtml += "<template data-nova-swap=\"" + cleanId + "\">" +
+                           partialBuilder.generateHTML(false) +
+                           "</template>\n";
+              matchedAny = true;
+            }
+          }
+          if (matchedAny) {
+            res.set_header("X-Nova-Multi-Target", "true");
+            res.set_content(multiHtml, "text/html");
+            return;
+          }
+        } else if (components.find(targetId) != components.end()) {
+          // SINGLE-TARGET PARTIAL RENDER
+          NovaBuilder partialBuilder;
+          components[targetId]->render(partialBuilder);
+          res.set_content(partialBuilder.generateHTML(false), "text/html");
+          return;
         }
-        res.set_content(this->generateHTML(false), "text/html");
       }
+
+      // FULL RENDER: Re-render the active route for this session
+      std::lock_guard<std::mutex> lock(this->builder_mutex);
+      std::string sid = np::Context::current_session_id;
+      std::string active_path = this->session_current_paths.count(sid)
+                                    ? this->session_current_paths[sid]
+                                    : this->current_path;
+      this->clear();
+      RouteMatch rm = this->resolveRoute(active_path);
+      if (rm.matched) {
+        np::Context::current_params = rm.params;
+        rm.callback(*this, rm.params);
+      }
+      res.set_content(this->generateHTML(false), "text/html");
     });
 
     // The polling route handles automatic background updates

@@ -202,6 +202,56 @@ function initHMR() {
     connect();
 }
 
+// Applies surgical single-target, multi-target, or full-page DOM updates
+function applyDomUpdates(html, targetId, isMultiTarget) {
+    if (isMultiTarget) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const templates = doc.querySelectorAll('template[data-nova-swap]');
+        templates.forEach(tpl => {
+            const id = tpl.getAttribute('data-nova-swap');
+            const el = document.getElementById(id);
+            if (el) {
+                const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
+                el.innerHTML = tpl.innerHTML;
+                if (wasFlipped) {
+                    const newCard = el.querySelector('.flip-card');
+                    if (newCard) newCard.classList.add('is-flipped');
+                }
+                setupPolling();
+                setupWidgets(el);
+                triggerServerEffects(el);
+            }
+        });
+        return;
+    }
+
+    if (targetId) {
+        const el = document.getElementById(targetId);
+        if (el) {
+            const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
+            el.innerHTML = html;
+            if (wasFlipped) {
+                const newCard = el.querySelector('.flip-card');
+                if (newCard) newCard.classList.add('is-flipped');
+            }
+            setupPolling();
+            setupWidgets(el);
+            triggerServerEffects(el);
+        } else {
+            console.error('NovaCPP: Target component ' + targetId + ' not found in DOM.');
+        }
+    } else {
+        const root = document.getElementById('root');
+        if (root) {
+            root.innerHTML = html;
+            setupPolling();
+            setupWidgets(root);
+            triggerServerEffects(root);
+        }
+    }
+}
+
 // Run setup polling, widgets, effects, and HMR on initial page load
 window.addEventListener('DOMContentLoaded', () => {
     setupPolling();
@@ -259,30 +309,9 @@ document.addEventListener('submit', async (e) => {
         });
 
         if (response.ok) {
+            const isMulti = response.headers.get('X-Nova-Multi-Target') === 'true';
             const html = await response.text();
-
-            if (targetId) {
-                const el = document.getElementById(targetId);
-                if (el) {
-                    const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
-                    el.innerHTML = html;
-                    if (wasFlipped) {
-                        const newCard = el.querySelector('.flip-card');
-                        if (newCard) newCard.classList.add('is-flipped');
-                    }
-                    setupPolling();
-                    setupWidgets(el);
-                    triggerServerEffects(el);
-                } else {
-                    console.error('NovaCPP: Target component ' + targetId + ' not found in DOM.');
-                }
-            } else {
-                const root = document.getElementById('root');
-                root.innerHTML = html;
-                setupPolling();
-                setupWidgets(root);
-                triggerServerEffects(root);
-            }
+            applyDomUpdates(html, targetId, isMulti);
         }
     } catch (error) {
         console.error('NovaCPP form submit error:', error);
@@ -328,30 +357,9 @@ document.addEventListener('click', async (e) => {
             });
 
             if (response.ok) {
+                const isMulti = response.headers.get('X-Nova-Multi-Target') === 'true';
                 const html = await response.text();
-
-                if (targetId) {
-                    const el = document.getElementById(targetId);
-                    if (el) {
-                        const wasFlipped = el.querySelector('.flip-card.is-flipped') !== null;
-                        el.innerHTML = html;
-                        if (wasFlipped) {
-                            const newCard = el.querySelector('.flip-card');
-                            if (newCard) newCard.classList.add('is-flipped');
-                        }
-                        setupPolling();
-                        setupWidgets(el);
-                        triggerServerEffects(el);
-                    } else {
-                        console.error('NovaCPP: Target component ' + targetId + ' not found in DOM.');
-                    }
-                } else {
-                    const root = document.getElementById('root');
-                    root.innerHTML = html;
-                    setupPolling();
-                    setupWidgets(root);
-                    triggerServerEffects(root);
-                }
+                applyDomUpdates(html, targetId, isMulti);
             }
         } catch (error) {
             console.error('NovaCPP fetch error:', error);
