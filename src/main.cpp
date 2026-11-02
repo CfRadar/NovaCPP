@@ -13,7 +13,7 @@
    #include "backend/Database.hpp"
    #include "backend/Auth.hpp"
 
-   void renderHomePage(np::NovaBuilder& np);
+   void renderHomePage(np::RenderContext& np);
 
    int main() {
        np::loadEnv(".env");
@@ -46,8 +46,8 @@ void signalHandler(int signum) {
 }
 
 // Forward declare the page functions from frontend/App.cpp
-void renderHomePage(np::NovaBuilder& np);
-void renderAboutPage(np::NovaBuilder& np);
+void renderHomePage(np::RenderContext& np);
+void renderAboutPage(np::RenderContext& np);
 
 int main() {
     // 0. Load .env configuration file if present
@@ -91,7 +91,7 @@ int main() {
     // 2. Register SPA UI Routes
     np.route("/", renderHomePage);
     np.route("/about", renderAboutPage);
-    np.route("/users/:id", [](np::NovaBuilder& app, const std::map<std::string, std::string>& params) {
+    np.route("/users/:id", [](np::RenderContext& app, const std::map<std::string, std::string>& params) {
         std::string id = params.count("id") ? params.at("id") : "unknown";
         app << "<div class='bento-grid'>"
             << "  <div class='bento-card col-12'>"
@@ -101,7 +101,7 @@ int main() {
             << "  </div>"
             << "</div>";
     });
-    np.route("/orgs/{org}/repos/{repo}", [](np::NovaBuilder& app, const std::map<std::string, std::string>& params) {
+    np.route("/orgs/{org}/repos/{repo}", [](np::RenderContext& app, const std::map<std::string, std::string>& params) {
         std::string org = params.count("org") ? params.at("org") : "none";
         std::string repo = params.count("repo") ? params.at("repo") : "none";
         app << "<div class='bento-grid'>"

@@ -33,7 +33,7 @@ class HeaderComponent : public np::Component {
 public:
     HeaderComponent() : Component("header-comp") {}
 
-    void render(np::NovaBuilder& np) override {
+    void render(np::RenderContext& np) override {
         np << R"html(
         <div class="bento-card col-12">
             <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -52,7 +52,7 @@ class CounterCard : public np::Component {
 public:
     CounterCard() : Component("counter-card") {}
 
-    void render(np::NovaBuilder& np) override {
+    void render(np::RenderContext& np) override {
         np << R"html(
         <div class="bento-card col-6">
             <h3>Interactive Counter</h3>
@@ -70,7 +70,7 @@ class DatabaseCard : public np::Component {
 public:
     DatabaseCard() : Component("db-card") {}
 
-    void render(np::NovaBuilder& np) override {
+    void render(np::RenderContext& np) override {
         // Query database safely via pooled connection
         std::string userCount = "0";
         try {
@@ -95,7 +95,7 @@ DatabaseCard dbCard;
 // ============================================================================
 // 3. PAGE ROUTING & ACTION HANDLERS
 // ============================================================================
-void renderHomePage(np::NovaBuilder& np) {
+void renderHomePage(np::RenderContext& np) {
     // Action handlers: triggered by nova-click attributes
     np.onClick("inc", []() {
         counter = counter + 1;
@@ -124,7 +124,7 @@ void renderHomePage(np::NovaBuilder& np) {
     np << "</div>";
 }
 
-void renderAboutPage(np::NovaBuilder& np) {
+void renderAboutPage(np::RenderContext& np) {
     np << R"html(
     <div class="bento-grid">
         <div class="bento-card col-12">

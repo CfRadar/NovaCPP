@@ -36,14 +36,14 @@
 
    MyComponent myComp;
 
-   void renderHomePage(np::NovaBuilder& np) {
+   void renderHomePage(np::RenderContext& np) {
        np.onClick("inc", []() { myCount = myCount + 1; });
        np << "<div class='bento-grid'>";
        np.renderComponent(myComp);
        np << "</div>";
    }
 
-   void renderAboutPage(np::NovaBuilder& np) {
+   void renderAboutPage(np::RenderContext& np) {
        np << "<div class='bento-grid'><div class='bento-card col-12'><h1>About</h1><a href='/' nova-link>&larr; Back</a></div></div>";
    }
    ============================================================================
@@ -1117,7 +1117,7 @@ AboutComponent aboutComp;
 // PAGE ROUTING
 // ===================================================================
 
-void renderHomePage(np::NovaBuilder& np) {
+void renderHomePage(np::RenderContext& np) {
     
     np.onLoad([]() {
         counter = 0;
@@ -1349,7 +1349,7 @@ void renderHomePage(np::NovaBuilder& np) {
     )html";
 }
 
-void renderAboutPage(np::NovaBuilder& np) {
+void renderAboutPage(np::RenderContext& np) {
     np << R"html(<div class="bento-grid">)html";
     np.renderComponent(navComp);
     np.renderComponent(aboutComp);
