@@ -321,6 +321,14 @@ body {
     outline-offset: 2px;
 }
 
+/* Interactive element cursor hints */
+[nova-link],
+[nova-click],
+[data-nova-effect] {
+    cursor: pointer;
+}
+
+
 /* ==========================================================================
    STAGGERED SLIDING ENTRANCE ANIMATIONS
    ========================================================================== */

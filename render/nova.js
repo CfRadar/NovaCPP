@@ -17,10 +17,12 @@ window.NovaEffects['confetti'] = function(el) {
 
 // Mount visual widgets (charts, pickers, 3D, code highlighters) automatically
 function setupWidgets(root = document) {
-    const widgets = root.querySelectorAll('[data-nova-widget]');
-    widgets.forEach(el => {
+    if (!root) return;
+
+    function mountSingle(el) {
+        if (!el || !el.getAttribute) return;
         const name = el.getAttribute('data-nova-widget');
-        if (window.NovaWidgets && window.NovaWidgets[name] && !el._novaWidgetMounted) {
+        if (name && window.NovaWidgets && window.NovaWidgets[name] && !el._novaWidgetMounted) {
             try {
                 const propsRaw = el.getAttribute('data-nova-props') || '{}';
                 const props = JSON.parse(propsRaw);
@@ -30,8 +32,42 @@ function setupWidgets(root = document) {
                 console.error(`[NovaCPP] Error mounting widget '${name}':`, err);
             }
         }
-    });
+    }
+
+    mountSingle(root);
+
+    if (root.querySelectorAll) {
+        const widgets = root.querySelectorAll('[data-nova-widget]');
+        widgets.forEach(el => mountSingle(el));
+    }
 }
+
+// Unmount visual widgets cleanly before DOM nodes are detached or replaced
+function unmountWidgets(container) {
+    if (!container) return;
+
+    function unmountSingle(el) {
+        if (!el || !el.getAttribute) return;
+        const name = el.getAttribute('data-nova-widget');
+        if (name && el._novaWidgetMounted && window.NovaWidgets && window.NovaWidgets[name] && typeof window.NovaWidgets[name].unmount === 'function') {
+            try {
+                window.NovaWidgets[name].unmount(el);
+            } catch (err) {
+                console.error(`[NovaCPP] Error unmounting widget '${name}':`, err);
+            }
+        }
+        el._novaWidgetMounted = false;
+    }
+
+    unmountSingle(container);
+
+    if (container.querySelectorAll) {
+        const widgets = container.querySelectorAll('[data-nova-widget]');
+        widgets.forEach(el => unmountSingle(el));
+    }
+}
+window.unmountWidgets = unmountWidgets;
+
 
 // Trigger declarative effects dispatched from C++ server responses
 function triggerServerEffects(root = document) {
@@ -69,6 +105,7 @@ function morphElement(existingNode, targetNode) {
     // 2. If node types or tag names differ, replace node directly
     if (existingNode.nodeType !== targetNode.nodeType || existingNode.nodeName !== targetNode.nodeName) {
         if (existingNode.parentNode) {
+            unmountWidgets(existingNode);
             existingNode.parentNode.replaceChild(targetNode.cloneNode(true), existingNode);
         }
         return;
@@ -76,6 +113,15 @@ function morphElement(existingNode, targetNode) {
 
     // 3. Element node morph
     if (existingNode.nodeType === Node.ELEMENT_NODE) {
+        // If this element was a mounted widget, but target is no longer the same widget, unmount it cleanly
+        if (existingNode._novaWidgetMounted) {
+            const targetWidget = targetNode.getAttribute ? targetNode.getAttribute('data-nova-widget') : null;
+            const existingWidget = existingNode.getAttribute('data-nova-widget');
+            if (!targetWidget || targetWidget !== existingWidget) {
+                unmountWidgets(existingNode);
+            }
+        }
+
         const wasFlipped = existingNode.classList && existingNode.classList.contains('is-flipped');
 
         // Synchronize attributes from target to existing
@@ -122,6 +168,7 @@ function morphElement(existingNode, targetNode) {
             if (!existingChild && targetChild) {
                 existingNode.appendChild(targetChild.cloneNode(true));
             } else if (existingChild && !targetChild) {
+                unmountWidgets(existingChild);
                 existingNode.removeChild(existingChild);
             } else if (existingChild && targetChild) {
                 morphElement(existingChild, targetChild);
@@ -161,6 +208,7 @@ function morphInnerHtml(container, newHtml) {
             if (!ex && tg) {
                 container.appendChild(tg.cloneNode(true));
             } else if (ex && !tg) {
+                unmountWidgets(ex);
                 container.removeChild(ex);
             } else if (ex && tg) {
                 morphElement(ex, tg);
@@ -221,8 +269,8 @@ function setupPolling(isThrottled = null) {
     });
 }
 
-// Handle SPA navigation dynamically with scroll position preservation
-async function navigateTo(path, isHMR = false) {
+// Handle SPA navigation dynamically with standards-compliant scroll history restoration
+async function navigateTo(path, isHMR = false, resetScroll = false) {
     try {
         const scrollX = window.scrollX;
         const scrollY = window.scrollY;
@@ -242,11 +290,18 @@ async function navigateTo(path, isHMR = false) {
             const html = await response.text();
             const root = document.getElementById('root');
             if (root) {
-                root.innerHTML = html;
-                window.scrollTo(scrollX, scrollY);
+                unmountWidgets(root);
+                morphInnerHtml(root, html);
+                if (resetScroll) {
+                    window.scrollTo(0, 0);
+                } else if (!isHMR) {
+                    window.scrollTo(scrollX, scrollY);
+                }
                 setupPolling();
                 setupWidgets(root);
                 triggerServerEffects(root);
+                setupSwipeGestures();
+                updateSwipeUi();
             }
         }
     } catch (error) {
@@ -505,6 +560,23 @@ if (typeof window !== 'undefined' && !window._novaSwipeListenersAttached) {
         }
     });
 
+    let wheelDebounce = null;
+    window.addEventListener('wheel', (e) => {
+        const viewport = document.querySelector('.nova-viewport');
+        if (!viewport) return;
+
+        // If horizontal wheel delta dominates vertical delta and exceeds threshold (trackpad swipe)
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 40) {
+            if (wheelDebounce) return;
+            wheelDebounce = setTimeout(() => { wheelDebounce = null; }, 400);
+            if (e.deltaX > 0) {
+                window.swipeNext();
+            } else {
+                window.swipePrev();
+            }
+        }
+    }, { passive: true });
+
     window.addEventListener('hashchange', () => {
         syncSlideFromHash();
     });
@@ -542,9 +614,12 @@ if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
     });
 }
 
-// Handle browser Back/Forward buttons
-window.addEventListener('popstate', () => {
-    navigateTo(window.location.pathname);
+// Handle browser Back/Forward buttons with exact scroll restoration
+window.addEventListener('popstate', async (e) => {
+    await navigateTo(window.location.pathname, false, false);
+    if (e && e.state && typeof e.state.scrollY === 'number') {
+        window.scrollTo(e.state.scrollX || 0, e.state.scrollY);
+    }
 });
 
 // Page Visibility API: throttle background polling when tab is inactive, resume immediately on focus
@@ -619,20 +694,24 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('click', async (e) => {
-    // Intercept SPA routing links
-    if (e.target.hasAttribute('nova-link')) {
+    // 1. Intercept SPA routing links (handles nested elements like spans, icons, and text)
+    const linkEl = e.target.closest('[nova-link]');
+    if (linkEl && linkEl.tagName === 'A') {
         e.preventDefault();
-        const path = e.target.getAttribute('href');
-
-        // Push to browser history
-        window.history.pushState({}, "", path);
-
-        // Execute the navigation
-        await navigateTo(path);
-        return;
+        const path = linkEl.getAttribute('href');
+        if (path) {
+            // Save current scroll position to current history entry before leaving
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState({ scrollX: window.scrollX, scrollY: window.scrollY }, "");
+            }
+            // Push to browser history with initial scroll position at top
+            window.history.pushState({ scrollX: 0, scrollY: 0 }, "", path);
+            await navigateTo(path, false, true);
+            return;
+        }
     }
 
-    // Intercept declarative npm effects
+    // 2. Intercept declarative npm effects
     const effectEl = e.target.closest('[data-nova-effect]');
     if (effectEl) {
         const effect = effectEl.getAttribute('data-nova-effect');
@@ -641,10 +720,11 @@ document.addEventListener('click', async (e) => {
         }
     }
 
-    // Intercept component interactions
-    if (e.target.hasAttribute('nova-click')) {
-        const actionName = e.target.getAttribute('nova-click');
-        const targetId = e.target.getAttribute('nova-target');
+    // 3. Intercept component interactions (handles nested spans, icons, labels)
+    const clickEl = e.target.closest('[nova-click]');
+    if (clickEl) {
+        const actionName = clickEl.getAttribute('nova-click');
+        const targetId = clickEl.getAttribute('nova-target');
 
         try {
             const headers = {};
