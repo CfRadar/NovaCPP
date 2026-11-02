@@ -1649,3 +1649,104 @@ button:active {
         font-size: 1.7rem;
     }
 }
+
+/* ==========================================================================
+   DEVELOPER BUILD ERROR OVERLAY (Fast Refresh Diagnostics)
+   ========================================================================== */
+.nova-build-error-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+.nova-error-dialog {
+    background: #0D1117;
+    border: 1px solid #F85149;
+    border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+    width: 100%;
+    max-width: 900px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideUpFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nova-error-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: #161B22;
+    border-bottom: 1px solid #30363D;
+}
+
+.nova-error-badge {
+    background: #DA3633;
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+.nova-error-title {
+    color: #F0F6FC;
+    font-size: 0.95rem;
+    font-weight: 600;
+    flex: 1;
+}
+
+.nova-error-close {
+    background: transparent;
+    border: none;
+    color: #8B949E;
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+    border-radius: 4px;
+    transition: color 0.15s;
+}
+
+.nova-error-close:hover {
+    color: #FFFFFF;
+}
+
+.nova-error-body {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+    background: #090D13;
+    color: #FF7B72;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.825rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.nova-error-footer {
+    padding: 10px 20px;
+    background: #161B22;
+    border-top: 1px solid #21262D;
+    color: #8B949E;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+}
+

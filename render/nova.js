@@ -309,6 +309,56 @@ async function navigateTo(path, isHMR = false, resetScroll = false) {
     }
 }
 
+// Remove active build error overlay if present
+function removeBuildErrorOverlay() {
+    const existing = document.getElementById('nova-build-error-overlay');
+    if (existing) {
+        existing.remove();
+    }
+}
+
+// Render developer build error overlay with full compiler diagnostics
+function renderBuildErrorOverlay(errorText) {
+    removeBuildErrorOverlay();
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'nova-build-error-overlay';
+    overlay.className = 'nova-build-error-overlay';
+    overlay.innerHTML = `
+        <div class="nova-error-dialog">
+            <div class="nova-error-header">
+                <div class="nova-error-badge">C++ Build Error</div>
+                <div class="nova-error-title">Compilation Failed during Fast Refresh</div>
+                <button class="nova-error-close" id="nova-error-close-btn" aria-label="Dismiss">&times;</button>
+            </div>
+            <pre class="nova-error-body"><code>${escapeHtml(errorText)}</code></pre>
+            <div class="nova-error-footer">
+                <span>Save file to hot-recompile &bull; NovaCPP Fast Refresh</span>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeBtn = document.getElementById('nova-error-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            removeBuildErrorOverlay();
+        });
+    }
+}
+window.renderBuildErrorOverlay = renderBuildErrorOverlay;
+window.removeBuildErrorOverlay = removeBuildErrorOverlay;
+
 // NovaCPP Fast Refresh & HMR Client
 function initHMR() {
     if (typeof EventSource === 'undefined') return;
@@ -325,9 +375,23 @@ function initHMR() {
                 if (isReconnecting) {
                     isReconnecting = false;
                     console.log('[Nova HMR] Reconnected! Fast Refreshing current view...');
+                    removeBuildErrorOverlay();
                     navigateTo(window.location.pathname, true);
                 }
             };
+
+            hmrSource.addEventListener('build-error', (e) => {
+                try {
+                    const data = JSON.parse(e.data || '{}');
+                    renderBuildErrorOverlay(data.error || 'Compilation failed.');
+                } catch (err) {
+                    renderBuildErrorOverlay(e.data || 'Compilation failed.');
+                }
+            });
+
+            hmrSource.addEventListener('build-success', () => {
+                removeBuildErrorOverlay();
+            });
 
             hmrSource.addEventListener('style-update', () => {
                 console.log('[Nova HMR] Hot-reloading styles...');
@@ -369,6 +433,7 @@ function initHMR() {
             });
 
             hmrSource.addEventListener('reload', () => {
+                removeBuildErrorOverlay();
                 console.log('[Nova HMR] Fast Refreshing view on reload signal...');
                 navigateTo(window.location.pathname, true);
             });

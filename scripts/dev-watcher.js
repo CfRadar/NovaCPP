@@ -33,15 +33,39 @@ function log(prefix, msg, color = CYAN) {
     console.log(`${color}${BOLD}[${prefix}]${RESET} ${msg}`);
 }
 
-// Kill any orphaned NovaCPP processes
-function killOrphanedServers() {
+// Scoped process termination: kills only the server process tree spawned by this runner
+function killCurrentServer() {
+    if (!serverProcess || !serverProcess.pid) return;
     try {
         if (process.platform === 'win32') {
-            execSync('taskkill /F /IM NovaCPP.exe /T 2>nul', { stdio: 'ignore' });
+            execSync(`taskkill /F /T /PID ${serverProcess.pid} 2>nul`, { stdio: 'ignore' });
         } else {
-            execSync('pkill -9 -f NovaCPP 2>/dev/null', { stdio: 'ignore' });
+            try {
+                process.kill(-serverProcess.pid, 'SIGKILL');
+            } catch (e) {
+                process.kill(serverProcess.pid, 'SIGKILL');
+            }
         }
     } catch (e) {}
+    serverProcess = null;
+}
+
+// Stop any server instance listening specifically on our target PORT
+function stopServerOnPort(port = PORT) {
+    return new Promise((resolve) => {
+        const req = http.request({
+            hostname: '127.0.0.1',
+            port: port,
+            path: '/nova/stop',
+            method: 'POST',
+            timeout: 500
+        }, () => {
+            setTimeout(resolve, 200);
+        });
+        req.on('error', () => resolve(true));
+        req.on('timeout', () => { req.destroy(); resolve(true); });
+        req.end();
+    });
 }
 
 // Send HMR event to the running NovaCPP server
@@ -74,17 +98,15 @@ function broadcastHMREvent(event, data = {}) {
 function stopServer() {
     return new Promise((resolve) => {
         if (!serverProcess) {
-            killOrphanedServers();
-            return setTimeout(resolve, 150);
+            return setTimeout(resolve, 100);
         }
 
         let resolved = false;
         const finish = () => {
             if (resolved) return;
             resolved = true;
-            killOrphanedServers();
-            serverProcess = null;
-            setTimeout(resolve, 200);
+            killCurrentServer();
+            setTimeout(resolve, 150);
         };
 
         const req = http.request({
@@ -168,23 +190,23 @@ function startServer() {
     });
 }
 
-// Execute incremental C++ build
+// Execute incremental C++ build with universal CMake parallel syntax
 function runBuild() {
     log('BUILD', 'Compiling changes...', CYAN);
     const start = Date.now();
     try {
-        const isWindows = process.platform === 'win32';
-        const buildCmd = isWindows 
-            ? 'cmake --build build --target NovaCPP -- /m:4 /verbosity:quiet'
-            : 'cmake --build build --target NovaCPP -j4';
-
-        execSync(buildCmd, { cwd: ROOT_DIR, stdio: 'inherit' });
+        const buildCmd = 'cmake --build build --target NovaCPP --parallel 4';
+        execSync(buildCmd, { cwd: ROOT_DIR, stdio: 'pipe' });
         const elapsed = ((Date.now() - start) / 1000).toFixed(2);
         log('BUILD', `Compilation succeeded in ${elapsed}s`, GREEN);
-        return true;
+        return { success: true, error: null };
     } catch (err) {
-        log('BUILD', 'Compilation failed. See compiler output above.', RED);
-        return false;
+        const errorOutput = (err.stderr ? err.stderr.toString() : '') + (err.stdout ? err.stdout.toString() : '');
+        log('BUILD', 'Compilation failed. See compiler output below.', RED);
+        if (errorOutput) {
+            console.error(errorOutput.trim());
+        }
+        return { success: false, error: errorOutput || err.message };
     }
 }
 
@@ -235,21 +257,28 @@ async function handleFileChange(filepath) {
         log('FAST REFRESH', `Source changed (${basename}) -> Hot recompiling...`, CYAN);
 
         await stopServer();
-        const success = runBuild();
+        const buildResult = runBuild();
         
         isRebuilding = false;
 
-        if (success) {
+        if (buildResult.success) {
             startServer();
             const ready = await waitForServerReady(PORT, 8000);
             if (ready) {
                 log('HMR', `Fast Refresh ready. Broadcasting reload event...`, GREEN);
+                await broadcastHMREvent('build-success');
                 await broadcastHMREvent('reload', { file: basename, timestamp: Date.now() });
             } else {
                 log('SERVER', 'Server started but did not respond to ping within timeout.', YELLOW);
             }
         } else {
-            log('HMR', 'Waiting for fixes before restarting...', YELLOW);
+            log('HMR', 'Waiting for fixes before restarting. Broadcasting error overlay...', YELLOW);
+            // Launch current server binary to relay the build-error event to connected browsers
+            startServer();
+            const ready = await waitForServerReady(PORT, 5000);
+            if (ready) {
+                await broadcastHMREvent('build-error', { error: buildResult.error });
+            }
         }
 
         if (buildPending) {
@@ -279,8 +308,8 @@ console.log(`\n${CYAN}${BOLD}========================================${RESET}`);
 console.log(`${CYAN}${BOLD}   NovaCPP Hot Reloading Dev Runner   ${RESET}`);
 console.log(`${CYAN}${BOLD}========================================${RESET}\n`);
 
-// Clean up any stale orphaned NovaCPP processes before starting
-killOrphanedServers();
+// Clean up any stale process listening on this port before starting
+await stopServerOnPort(PORT);
 
 // Ensure build directory exists
 if (!fs.existsSync(path.join(ROOT_DIR, 'build', 'CMakeCache.txt'))) {
@@ -294,7 +323,8 @@ try {
 } catch (e) {}
 
 // Start initial build & server
-if (runBuild()) {
+const initBuild = runBuild();
+if (initBuild.success) {
     startServer();
 }
 
