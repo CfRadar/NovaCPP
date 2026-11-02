@@ -99,6 +99,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_fetch.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_graph.cpp")
+    add_executable(simulate_graph ../Test/simulate_graph.cpp)
+    target_include_directories(simulate_graph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_graph ws2_32)
+    else()
+        target_link_libraries(simulate_graph pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html
