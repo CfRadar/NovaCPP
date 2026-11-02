@@ -88,6 +88,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/test_env_and_db_uri.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../test/simulate_fetch.cpp")
+    add_executable(simulate_fetch ../test/simulate_fetch.cpp)
+    target_include_directories(simulate_fetch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_fetch ws2_32 winhttp)
+    else()
+        target_link_libraries(simulate_fetch pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html
