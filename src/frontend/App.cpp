@@ -1178,16 +1178,18 @@ void renderHomePage(np::NovaBuilder& np) {
         std::string email = "dev" + std::to_string(s_userCount) + "@novacpp.dev";
         std::string role = (s_userCount % 2 == 0) ? "developer" : "core-team";
         try {
-            Database::execute("INSERT INTO users (name, email, role) VALUES ('" + name + "', '" + email + "', '" + role + "');");
+            Database::execute("INSERT INTO users (name, email, role) VALUES (?, ?, ?);", name, email, role);
         } catch (...) {}
     });
 
     np.onClick("reset_sample_users", []() {
         try {
-            Database::execute("DELETE FROM users;");
-            Database::execute("INSERT INTO users (name, email, role) VALUES ('Ada Lovelace', 'ada@novacpp.dev', 'architect');");
-            Database::execute("INSERT INTO users (name, email, role) VALUES ('Alan Turing', 'alan@novacpp.dev', 'core-dev');");
-            Database::execute("INSERT INTO users (name, email, role) VALUES ('Margaret Hamilton', 'margaret@novacpp.dev', 'lead');");
+            Database::transaction([](np::SQLiteConnection& db) {
+                db.execute("DELETE FROM users;");
+                db.execute("INSERT INTO users (name, email, role) VALUES (?, ?, ?);", "Ada Lovelace", "ada@novacpp.dev", "architect");
+                db.execute("INSERT INTO users (name, email, role) VALUES (?, ?, ?);", "Alan Turing", "alan@novacpp.dev", "core-dev");
+                db.execute("INSERT INTO users (name, email, role) VALUES (?, ?, ?);", "Margaret Hamilton", "margaret@novacpp.dev", "lead");
+            });
         } catch (...) {}
     });
 
