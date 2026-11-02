@@ -39,10 +39,11 @@ FROM ubuntu:22.04 AS runner
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only runtime OpenSSL and CA certificates
+# Install only runtime OpenSSL, CA certificates, and curl for healthchecks
 RUN apt-get update && apt-get install -y \
     libssl3 \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Security: Create unprivileged system user and group
@@ -58,14 +59,19 @@ COPY --from=builder /app/build/NovaCPP ./NovaCPP
 COPY --from=builder /app/render ./render
 COPY --from=builder /app/src/assets ./src/assets
 
-# Set strict ownership for the unprivileged user
-RUN chown -R nova:nova /home/nova/app
+# Pre-create data directory with correct ownership for SQLite WAL volume persistence
+RUN mkdir -p /home/nova/app/data && chown -R nova:nova /home/nova/app
+VOLUME ["/home/nova/app/data"]
 
 USER nova:nova
 EXPOSE 8080
 
 # Forward SIGTERM directly to the process for graceful shutdown
 STOPSIGNAL SIGTERM
+
+# Native healthcheck using built-in /healthz probe
+HEALTHCHECK --interval=15s --timeout=3s --start-period=3s --retries=3 \
+  CMD test $(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/healthz) -eq 200 || exit 1
 
 # Launch the hardened C++ server
 CMD ["./NovaCPP"]

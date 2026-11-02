@@ -7,7 +7,8 @@
     "build": "node scripts/bundle-vendor.js && cmake --build build",
     "bundle": "node scripts/bundle-vendor.js",
     "postinstall": "node scripts/bundle-vendor.js",
-    "start": "nova run"
+    "start": "nova run",
+    "test": "python ../scripts/run-all-tests.py"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
