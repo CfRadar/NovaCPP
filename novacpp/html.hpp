@@ -6,6 +6,7 @@
 #include <sstream>
 #include <map>
 #include <mutex>
+#include <shared_mutex>
 #include <queue>
 #include <memory>
 #include <condition_variable>
@@ -22,6 +23,7 @@
 
 namespace np {
 class NovaBuilder;
+using RenderContext = NovaBuilder;
 
 // Global context extension to track current route parameters
 namespace Context {
@@ -197,8 +199,10 @@ inline std::map<std::string, std::string> parseJsonMap(const std::string &jsonSt
   return result;
 }
 
-// Helper to generate a random session ID
+// Helper to generate a random session ID (thread-safe)
 inline std::string generateSessionId() {
+  static std::mutex rng_mtx;
+  std::lock_guard<std::mutex> lock(rng_mtx);
   static std::random_device rd;
   static std::mt19937 gen(rd());
   static std::uniform_int_distribution<> dis(0, 15);
@@ -235,19 +239,23 @@ struct HMRClientQueue {
   std::queue<HMREvent> events;
 };
 
-class NovaBuilder {
-private:
-  std::vector<std::string> elements;
+struct ServerContext {
   httplib::Server svr;
+
+  mutable std::shared_mutex routes_mutex;
+  std::map<std::string, std::function<void(NovaBuilder &)>> routes;
+  std::vector<RouteEntry> dynamic_routes;
+
+  mutable std::shared_mutex callbacks_mutex;
   std::map<std::string, std::function<void()>> callbacks;
   std::map<std::string, std::function<void(const std::map<std::string, std::string>&)>> form_callbacks;
-  std::map<std::string, Component *> components; // Map of registered components
-  std::map<std::string, std::function<void(NovaBuilder &)>>
-      routes;                     // Registered static pages
-  std::vector<RouteEntry> dynamic_routes; // Registered dynamic routes
-  std::string current_path = "/"; // Tracks fallback current SPA route
-  std::map<std::string, std::string> session_current_paths; // Tracks active path per session
-  std::mutex builder_mutex;       // Guards concurrent rendering and route state
+
+  mutable std::shared_mutex components_mutex;
+  std::map<std::string, Component *> components;
+
+  mutable std::mutex session_paths_mutex;
+  std::string current_path = "/";
+  std::map<std::string, std::string> session_current_paths;
 
   // Real-time HMR Channel members
   std::mutex hmr_clients_mutex;
@@ -261,26 +269,20 @@ private:
   std::condition_variable cleaner_cv;
   std::mutex cleaner_mtx;
 
-public:
-  NovaBuilder() = default;
-
-  ~NovaBuilder() {
-    if (session_cleaner_thread.joinable()) {
-      is_shutting_down = true;
-      cleaner_cv.notify_all();
-      session_cleaner_thread.join();
-    }
+  ~ServerContext() {
+    stop();
   }
 
   void stop() {
-    is_shutting_down = true;
-    hmr_active = false;
-    hmr_cv.notify_all();
-    cleaner_cv.notify_all();
-    if (session_cleaner_thread.joinable()) {
-      session_cleaner_thread.join();
+    if (!is_shutting_down.exchange(true)) {
+      hmr_active = false;
+      hmr_cv.notify_all();
+      cleaner_cv.notify_all();
+      if (session_cleaner_thread.joinable()) {
+        session_cleaner_thread.join();
+      }
+      svr.stop();
     }
-    svr.stop();
   }
 
   void broadcastHMR(const std::string &event, const std::string &data = "{}") {
@@ -291,13 +293,59 @@ public:
     }
     hmr_cv.notify_all();
   }
+};
+
+class NovaBuilder {
+private:
+  std::shared_ptr<ServerContext> m_server;
+  std::vector<std::string> elements;
+  std::string m_sessionId = "default";
+  std::map<std::string, std::string> m_params;
+
+public:
+  // Backwards compatibility legacy mutex handle
+  mutable std::mutex builder_mutex;
+
+  NovaBuilder() : m_server(std::make_shared<ServerContext>()) {
+    elements.reserve(64);
+  }
+
+  NovaBuilder(std::shared_ptr<ServerContext> server,
+              const std::string &sessionId = "default",
+              const std::map<std::string, std::string> &params = {})
+      : m_server(server), m_sessionId(sessionId), m_params(params) {
+    elements.reserve(64);
+  }
+
+  // Create an isolated request-scoped render context that shares the server definition
+  NovaBuilder createScopedContext(const std::string &sessionId,
+                                  const std::map<std::string, std::string> &params = {}) const {
+    return NovaBuilder(m_server, sessionId, params);
+  }
+
+  ~NovaBuilder() = default;
+
+  void stop() {
+    if (m_server) {
+      m_server->stop();
+    }
+  }
+
+  void broadcastHMR(const std::string &event, const std::string &data = "{}") {
+    if (m_server) {
+      m_server->broadcastHMR(event, data);
+    }
+  }
+
   void clear() {
     elements.clear();
-    // We do NOT clear components here so that polling components remain
-    // registered!
   }
 
   void render(const std::string &html_string) {
+    elements.push_back(html_string);
+  }
+
+  void append(const std::string &html_string) {
     elements.push_back(html_string);
   }
 
@@ -306,26 +354,63 @@ public:
     return *this;
   }
 
+  std::string str() const {
+    std::string out;
+    for (const auto &el : elements) {
+      out += el + "\n";
+    }
+    return out;
+  }
+
+  const std::string &sessionId() const {
+    return m_sessionId;
+  }
+
+  std::string param(const std::string &key, const std::string &fallback = "") const {
+    auto it = m_params.find(key);
+    return (it != m_params.end()) ? it->second : fallback;
+  }
+
+  const std::map<std::string, std::string> &params() const {
+    if (!m_params.empty()) {
+      return m_params;
+    }
+    return np::Context::current_params;
+  }
+
+  size_t size() const {
+    return elements.size();
+  }
+
   // Register a C++ callback for a button action (like React's onClick)
   void onClick(const std::string &actionName, std::function<void()> callback) {
-    callbacks[actionName] = callback;
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->callbacks_mutex);
+      m_server->callbacks[actionName] = std::move(callback);
+    }
   }
 
   // Register a C++ callback for a form submission with serialized input values
   void onForm(const std::string &actionName,
               std::function<void(const std::map<std::string, std::string> &)> callback) {
-    form_callbacks[actionName] = callback;
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->callbacks_mutex);
+      m_server->form_callbacks[actionName] = std::move(callback);
+    }
   }
 
   // Alias for onForm accepting typed map callback
   void action(const std::string &actionName,
               std::function<void(const std::map<std::string, std::string> &)> callback) {
-    form_callbacks[actionName] = callback;
+    onForm(actionName, std::move(callback));
   }
 
   // Register a C++ callback that runs when the page is loaded/refreshed
   void onLoad(std::function<void()> callback) {
-    callbacks["__onLoad"] = callback;
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->callbacks_mutex);
+      m_server->callbacks["__onLoad"] = std::move(callback);
+    }
   }
 
   // Register a route with parameter extraction (supports :param and {param})
@@ -335,19 +420,22 @@ public:
     std::vector<std::string> paramNames;
     bool isDynamic = compileRoutePattern(pathPattern, compiledRegex, paramNames);
 
-    if (isDynamic) {
-      RouteEntry entry;
-      entry.patternString = pathPattern;
-      entry.regexPattern = compiledRegex;
-      entry.paramNames = paramNames;
-      entry.callback = renderCallback;
-      entry.isDynamic = true;
-      dynamic_routes.push_back(entry);
-    } else {
-      routes[pathPattern] = [renderCallback](NovaBuilder &builder) {
-        static const std::map<std::string, std::string> empty_params;
-        renderCallback(builder, empty_params);
-      };
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->routes_mutex);
+      if (isDynamic) {
+        RouteEntry entry;
+        entry.patternString = pathPattern;
+        entry.regexPattern = compiledRegex;
+        entry.paramNames = paramNames;
+        entry.callback = renderCallback;
+        entry.isDynamic = true;
+        m_server->dynamic_routes.push_back(entry);
+      } else {
+        m_server->routes[pathPattern] = [renderCallback](NovaBuilder &builder) {
+          static const std::map<std::string, std::string> empty_params;
+          renderCallback(builder, empty_params);
+        };
+      }
     }
   }
 
@@ -365,23 +453,28 @@ public:
       entry.callback = [renderCallback](NovaBuilder &builder, const std::map<std::string, std::string> &) {
         renderCallback(builder);
       };
-      dynamic_routes.push_back(entry);
+      if (m_server) {
+        std::unique_lock<std::shared_mutex> lock(m_server->routes_mutex);
+        m_server->dynamic_routes.push_back(entry);
+      }
     } else {
-      routes[path] = renderCallback;
+      if (m_server) {
+        std::unique_lock<std::shared_mutex> lock(m_server->routes_mutex);
+        m_server->routes[path] = renderCallback;
+      }
     }
   }
 
-  // Access current route parameters
-  const std::map<std::string, std::string> &params() const {
-    return np::Context::current_params;
-  }
-
   // Resolve a path against static and dynamic routes
-  RouteMatch resolveRoute(const std::string &path) {
+  RouteMatch resolveRoute(const std::string &path) const {
     RouteMatch match;
+    if (!m_server) return match;
+
+    std::shared_lock<std::shared_mutex> lock(m_server->routes_mutex);
+
     // 1. Fast path: exact literal match
-    auto it = routes.find(path);
-    if (it != routes.end()) {
+    auto it = m_server->routes.find(path);
+    if (it != m_server->routes.end()) {
       match.matched = true;
       match.matchedPattern = path;
       auto cb = it->second;
@@ -392,7 +485,7 @@ public:
     }
 
     // 2. Dynamic regex match in registration order
-    for (const auto &entry : dynamic_routes) {
+    for (const auto &entry : m_server->dynamic_routes) {
       std::smatch sm;
       if (std::regex_match(path, sm, entry.regexPattern)) {
         match.matched = true;
@@ -411,7 +504,10 @@ public:
 
   // Register and render a modular component
   void renderComponent(Component &comp, int pollIntervalMs = 0) {
-    components[comp.id] = &comp;
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->components_mutex);
+      m_server->components[comp.id] = &comp;
+    }
     if (pollIntervalMs > 0) {
       elements.push_back("<div id=\"" + comp.id + "\" nova-poll=\"" +
                          std::to_string(pollIntervalMs) + "\">");
@@ -428,7 +524,7 @@ public:
   }
 
   // Reference to default background worker pool
-  np::WorkerPool& workers() {
+  np::WorkerPool &workers() {
     return np::WorkerPool::defaultPool();
   }
 
@@ -438,7 +534,7 @@ public:
   }
 
   // Generate the HTML string
-  std::string generateHTML(bool includeWrapper = true) {
+  std::string generateHTML(bool includeWrapper = true) const {
     std::string out;
 
     if (includeWrapper) {
@@ -481,6 +577,30 @@ public:
     return out;
   }
 
+  // Session path accessors
+  std::string getSessionPath(const std::string &sid) const {
+    if (!m_server) return "/";
+    std::lock_guard<std::mutex> lock(m_server->session_paths_mutex);
+    auto it = m_server->session_current_paths.find(sid);
+    if (it != m_server->session_current_paths.end()) {
+      return it->second;
+    }
+    return m_server->current_path;
+  }
+
+  void setSessionPath(const std::string &sid, const std::string &path) {
+    if (!m_server) return;
+    std::lock_guard<std::mutex> lock(m_server->session_paths_mutex);
+    m_server->session_current_paths[sid] = path;
+    m_server->current_path = path;
+  }
+
+  void eraseSessionPath(const std::string &sid) {
+    if (!m_server) return;
+    std::lock_guard<std::mutex> lock(m_server->session_paths_mutex);
+    m_server->session_current_paths.erase(sid);
+  }
+
   // Prepare session state for a request with hardened cookie flags
   void initializeSessionContext(const httplib::Request &req,
                                 httplib::Response &res) {
@@ -507,6 +627,8 @@ public:
 
   // Starts the Live Server
   void listen(int port) {
+    if (!m_server) return;
+    httplib::Server &svr = m_server->svr;
 
     // Global HTTP defensive security headers on all responses
     svr.set_post_routing_handler([](const httplib::Request &/*req*/, httplib::Response &res) {
@@ -622,12 +744,12 @@ public:
     });
 
     // Server-Sent Events (SSE) Hot Module Replacement Stream
-    svr.Get("/nova/hmr", [&](const httplib::Request &req, httplib::Response &res) {
+    svr.Get("/nova/hmr", [this](const httplib::Request &req, httplib::Response &res) {
       auto client_queue = std::make_shared<HMRClientQueue>();
       {
-        std::lock_guard<std::mutex> lock(this->hmr_clients_mutex);
+        std::lock_guard<std::mutex> lock(this->m_server->hmr_clients_mutex);
         client_queue->events.push({"connected", "{\"status\":\"ready\"}"});
-        this->hmr_clients.push_back(client_queue);
+        this->m_server->hmr_clients.push_back(client_queue);
       }
 
       res.set_header("Access-Control-Allow-Origin", "*");
@@ -637,7 +759,7 @@ public:
       res.set_chunked_content_provider(
           "text/event-stream",
           [this, client_queue](size_t /*offset*/, httplib::DataSink &sink) {
-            if (!sink.is_writable() || !this->hmr_active) {
+            if (!sink.is_writable() || !this->m_server->hmr_active) {
               return false;
             }
 
@@ -645,7 +767,7 @@ public:
             bool has_event = false;
 
             {
-              std::unique_lock<std::mutex> lock(this->hmr_clients_mutex);
+              std::unique_lock<std::mutex> lock(this->m_server->hmr_clients_mutex);
               {
                 std::lock_guard<std::mutex> q_lock(client_queue->q_mtx);
                 if (!client_queue->events.empty()) {
@@ -656,13 +778,13 @@ public:
               }
 
               if (!has_event) {
-                this->hmr_cv.wait_for(lock, std::chrono::seconds(2), [&]() {
-                  if (!this->hmr_active) return true;
+                this->m_server->hmr_cv.wait_for(lock, std::chrono::seconds(2), [this, client_queue]() {
+                  if (!this->m_server->hmr_active) return true;
                   std::lock_guard<std::mutex> q_lock(client_queue->q_mtx);
                   return !client_queue->events.empty();
                 });
 
-                if (!this->hmr_active || !sink.is_writable()) {
+                if (!this->m_server->hmr_active || !sink.is_writable()) {
                   return false;
                 }
 
@@ -684,15 +806,15 @@ public:
             }
           },
           [this, client_queue](bool /*success*/) {
-            std::lock_guard<std::mutex> lock(this->hmr_clients_mutex);
-            this->hmr_clients.erase(
-                std::remove(this->hmr_clients.begin(), this->hmr_clients.end(), client_queue),
-                this->hmr_clients.end());
+            std::lock_guard<std::mutex> lock(this->m_server->hmr_clients_mutex);
+            this->m_server->hmr_clients.erase(
+                std::remove(this->m_server->hmr_clients.begin(), this->m_server->hmr_clients.end(), client_queue),
+                this->m_server->hmr_clients.end());
           });
     });
 
     // Endpoint for dev runners to broadcast hot reload events to connected browsers
-    svr.Post("/nova/hmr/broadcast", [&](const httplib::Request &req, httplib::Response &res) {
+    svr.Post("/nova/hmr/broadcast", [this](const httplib::Request &req, httplib::Response &res) {
       std::string event = req.get_header_value("X-Nova-HMR-Event");
       if (event.empty()) event = "component-update";
       std::string data = req.body.empty() ? "{}" : req.body;
@@ -701,7 +823,7 @@ public:
     });
 
     // Graceful stop endpoint for dev reloader
-    svr.Post("/nova/stop", [&](const httplib::Request &req, httplib::Response &res) {
+    svr.Post("/nova/stop", [this](const httplib::Request &req, httplib::Response &res) {
       res.set_content("{\"status\":\"stopping\"}", "application/json");
       this->stop();
     });
@@ -713,7 +835,7 @@ public:
 
     // Kubernetes Readiness Probe
     svr.Get("/readyz", [this](const httplib::Request &/*req*/, httplib::Response &res) {
-      if (this->is_shutting_down.load()) {
+      if (this->m_server && this->m_server->is_shutting_down.load()) {
         res.status = 503;
         res.set_content("{\"status\":\"draining\"}", "application/json");
         return;
@@ -722,13 +844,13 @@ public:
     });
 
     // Start periodic background session state eviction worker
-    session_cleaner_thread = std::thread([this]() {
-      while (!this->is_shutting_down.load()) {
-        std::unique_lock<std::mutex> lock(this->cleaner_mtx);
-        this->cleaner_cv.wait_for(lock, std::chrono::seconds(60), [this]() {
-          return this->is_shutting_down.load();
+    m_server->session_cleaner_thread = std::thread([server = this->m_server]() {
+      while (!server->is_shutting_down.load()) {
+        std::unique_lock<std::mutex> lock(server->cleaner_mtx);
+        server->cleaner_cv.wait_for(lock, std::chrono::seconds(60), [server]() {
+          return server->is_shutting_down.load();
         });
-        if (this->is_shutting_down.load()) break;
+        if (server->is_shutting_down.load()) break;
         np::StateRegistry::instance().evictAll();
       }
     });
@@ -744,54 +866,67 @@ public:
       std::string sid = getSessionCookie(req);
       if (!sid.empty()) {
         np::StateRegistry::instance().clearSessionAll(sid);
-        {
-          std::lock_guard<std::mutex> lock(this->builder_mutex);
-          this->session_current_paths.erase(sid);
-        }
+        this->eraseSessionPath(sid);
       }
       res.set_header("Set-Cookie", "nova_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax");
       res.set_content("{\"status\":\"logged_out\"}", "application/json");
     });
 
-    // SPA Navigation Route (React Router style fast swap)
+    // SPA Navigation Route (Lockless concurrent rendering)
     svr.Post("/nova/navigate",
-             [&](const httplib::Request &req, httplib::Response &res) {
+             [this](const httplib::Request &req, httplib::Response &res) {
                this->initializeSessionContext(req, res);
                std::string path = req.get_header_value("X-Nova-Path");
                std::string sid = np::Context::current_session_id;
 
                RouteMatch rm = this->resolveRoute(path);
                if (rm.matched) {
-                 std::lock_guard<std::mutex> lock(this->builder_mutex);
-                 this->session_current_paths[sid] = path;
-                 this->current_path = path;
-                 this->clear();
+                 this->setSessionPath(sid, path);
 
                  bool isHMR = req.has_header("X-Nova-HMR");
                  // Trigger onLoad for route transitions, but preserve state during HMR Fast Refresh
-                 if (!isHMR && callbacks.find("__onLoad") != callbacks.end()) {
-                   callbacks["__onLoad"]();
+                 if (!isHMR) {
+                   std::function<void()> onLoadCb = nullptr;
+                   {
+                     std::shared_lock<std::shared_mutex> lock(this->m_server->callbacks_mutex);
+                     auto it = this->m_server->callbacks.find("__onLoad");
+                     if (it != this->m_server->callbacks.end()) {
+                       onLoadCb = it->second;
+                     }
+                   }
+                   if (onLoadCb) {
+                     onLoadCb();
+                   }
                  }
 
                  np::Context::current_params = rm.params;
-                 rm.callback(*this, rm.params);
+                 NovaBuilder scopedBuilder = this->createScopedContext(sid, rm.params);
+                 rm.callback(scopedBuilder, rm.params);
                  // Return only inner HTML since it's an SPA transition
-                 res.set_content(this->generateHTML(false), "text/html");
+                 res.set_content(scopedBuilder.generateHTML(false), "text/html");
                } else {
                  res.status = 404;
                }
              });
 
     // The action route handles AJAX requests from the browser
-    svr.Post(R"(/nova/action/(.*))", [&](const httplib::Request &req,
+    svr.Post(R"(/nova/action/(.*))", [this](const httplib::Request &req,
                                          httplib::Response &res) {
       this->initializeSessionContext(req, res);
-
+      std::string sid = np::Context::current_session_id;
       std::string actionName = req.matches[1];
 
       // Execute the registered C++ callback for THIS specific user's state
-      if (callbacks.find(actionName) != callbacks.end()) {
-        callbacks[actionName]();
+      std::function<void()> actCb = nullptr;
+      {
+        std::shared_lock<std::shared_mutex> lock(this->m_server->callbacks_mutex);
+        auto it = this->m_server->callbacks.find(actionName);
+        if (it != this->m_server->callbacks.end()) {
+          actCb = it->second;
+        }
+      }
+      if (actCb) {
+        actCb();
       }
 
       // Check if this action targeted specific component(s)
@@ -799,7 +934,7 @@ public:
 
       if (!targetId.empty()) {
         if (targetId.find(',') != std::string::npos) {
-          // MULTI-TARGET SWAP
+          // MULTI-TARGET SWAP (Lockless)
           std::stringstream ss(targetId);
           std::string token;
           std::string multiHtml;
@@ -809,9 +944,17 @@ public:
             if (first == std::string::npos) continue;
             size_t last = token.find_last_not_of(" \t\r\n");
             std::string cleanId = token.substr(first, (last - first + 1));
-            if (components.find(cleanId) != components.end()) {
-              NovaBuilder partialBuilder;
-              components[cleanId]->render(partialBuilder);
+            Component *comp = nullptr;
+            {
+              std::shared_lock<std::shared_mutex> lock(this->m_server->components_mutex);
+              auto it = this->m_server->components.find(cleanId);
+              if (it != this->m_server->components.end()) {
+                comp = it->second;
+              }
+            }
+            if (comp) {
+              NovaBuilder partialBuilder = this->createScopedContext(sid);
+              comp->render(partialBuilder);
               multiHtml += "<template data-nova-swap=\"" + cleanId + "\">" +
                            partialBuilder.generateHTML(false) +
                            "</template>\n";
@@ -823,35 +966,43 @@ public:
             res.set_content(multiHtml, "text/html");
             return;
           }
-        } else if (components.find(targetId) != components.end()) {
-          // SINGLE-TARGET PARTIAL RENDER
-          NovaBuilder partialBuilder;
-          components[targetId]->render(partialBuilder);
-          res.set_content(partialBuilder.generateHTML(false), "text/html");
-          return;
+        } else {
+          Component *comp = nullptr;
+          {
+            std::shared_lock<std::shared_mutex> lock(this->m_server->components_mutex);
+            auto it = this->m_server->components.find(targetId);
+            if (it != this->m_server->components.end()) {
+              comp = it->second;
+            }
+          }
+          if (comp) {
+            // SINGLE-TARGET PARTIAL RENDER (Lockless)
+            NovaBuilder partialBuilder = this->createScopedContext(sid);
+            comp->render(partialBuilder);
+            res.set_content(partialBuilder.generateHTML(false), "text/html");
+            return;
+          }
         }
       }
 
-      // FULL RENDER: Re-render the current route for this specific session
-      std::lock_guard<std::mutex> lock(this->builder_mutex);
-      std::string sid = np::Context::current_session_id;
-      std::string active_path = this->session_current_paths.count(sid)
-                                    ? this->session_current_paths[sid]
-                                    : this->current_path;
-      this->clear();
+      // FULL RENDER: Re-render the current route for this specific session lock-free
+      std::string active_path = this->getSessionPath(sid);
       RouteMatch rm = this->resolveRoute(active_path);
       if (rm.matched) {
         np::Context::current_params = rm.params;
-        rm.callback(*this, rm.params);
+        NovaBuilder scopedBuilder = this->createScopedContext(sid, rm.params);
+        rm.callback(scopedBuilder, rm.params);
+        res.set_content(scopedBuilder.generateHTML(false), "text/html");
+      } else {
+        res.set_content("", "text/html");
       }
-      res.set_content(this->generateHTML(false), "text/html");
     });
 
     // The form route handles serialized form submissions from the browser
-    svr.Post(R"(/nova/form/(.*))", [&](const httplib::Request &req,
+    svr.Post(R"(/nova/form/(.*))", [this](const httplib::Request &req,
                                        httplib::Response &res) {
       this->initializeSessionContext(req, res);
-
+      std::string sid = np::Context::current_session_id;
       std::string actionName = req.matches[1];
 
       // Parse payload
@@ -866,10 +1017,25 @@ public:
       }
 
       // Execute registered C++ form handler for this specific user session
-      if (form_callbacks.find(actionName) != form_callbacks.end()) {
-        form_callbacks[actionName](formData);
-      } else if (callbacks.find(actionName) != callbacks.end()) {
-        callbacks[actionName]();
+      std::function<void(const std::map<std::string, std::string> &)> formCb = nullptr;
+      std::function<void()> actCb = nullptr;
+      {
+        std::shared_lock<std::shared_mutex> lock(this->m_server->callbacks_mutex);
+        auto fit = this->m_server->form_callbacks.find(actionName);
+        if (fit != this->m_server->form_callbacks.end()) {
+          formCb = fit->second;
+        } else {
+          auto ait = this->m_server->callbacks.find(actionName);
+          if (ait != this->m_server->callbacks.end()) {
+            actCb = ait->second;
+          }
+        }
+      }
+
+      if (formCb) {
+        formCb(formData);
+      } else if (actCb) {
+        actCb();
       }
 
       // Check if this action targeted specific component(s) for partial render
@@ -877,7 +1043,7 @@ public:
 
       if (!targetId.empty()) {
         if (targetId.find(',') != std::string::npos) {
-          // MULTI-TARGET SWAP
+          // MULTI-TARGET SWAP (Lockless)
           std::stringstream ss(targetId);
           std::string token;
           std::string multiHtml;
@@ -887,9 +1053,17 @@ public:
             if (first == std::string::npos) continue;
             size_t last = token.find_last_not_of(" \t\r\n");
             std::string cleanId = token.substr(first, (last - first + 1));
-            if (components.find(cleanId) != components.end()) {
-              NovaBuilder partialBuilder;
-              components[cleanId]->render(partialBuilder);
+            Component *comp = nullptr;
+            {
+              std::shared_lock<std::shared_mutex> lock(this->m_server->components_mutex);
+              auto it = this->m_server->components.find(cleanId);
+              if (it != this->m_server->components.end()) {
+                comp = it->second;
+              }
+            }
+            if (comp) {
+              NovaBuilder partialBuilder = this->createScopedContext(sid);
+              comp->render(partialBuilder);
               multiHtml += "<template data-nova-swap=\"" + cleanId + "\">" +
                            partialBuilder.generateHTML(false) +
                            "</template>\n";
@@ -901,49 +1075,66 @@ public:
             res.set_content(multiHtml, "text/html");
             return;
           }
-        } else if (components.find(targetId) != components.end()) {
-          // SINGLE-TARGET PARTIAL RENDER
-          NovaBuilder partialBuilder;
-          components[targetId]->render(partialBuilder);
-          res.set_content(partialBuilder.generateHTML(false), "text/html");
-          return;
+        } else {
+          Component *comp = nullptr;
+          {
+            std::shared_lock<std::shared_mutex> lock(this->m_server->components_mutex);
+            auto it = this->m_server->components.find(targetId);
+            if (it != this->m_server->components.end()) {
+              comp = it->second;
+            }
+          }
+          if (comp) {
+            // SINGLE-TARGET PARTIAL RENDER (Lockless)
+            NovaBuilder partialBuilder = this->createScopedContext(sid);
+            comp->render(partialBuilder);
+            res.set_content(partialBuilder.generateHTML(false), "text/html");
+            return;
+          }
         }
       }
 
-      // FULL RENDER: Re-render the active route for this session
-      std::lock_guard<std::mutex> lock(this->builder_mutex);
-      std::string sid = np::Context::current_session_id;
-      std::string active_path = this->session_current_paths.count(sid)
-                                    ? this->session_current_paths[sid]
-                                    : this->current_path;
-      this->clear();
+      // FULL RENDER: Re-render the active route for this session lock-free
+      std::string active_path = this->getSessionPath(sid);
       RouteMatch rm = this->resolveRoute(active_path);
       if (rm.matched) {
         np::Context::current_params = rm.params;
-        rm.callback(*this, rm.params);
+        NovaBuilder scopedBuilder = this->createScopedContext(sid, rm.params);
+        rm.callback(scopedBuilder, rm.params);
+        res.set_content(scopedBuilder.generateHTML(false), "text/html");
+      } else {
+        res.set_content("", "text/html");
       }
-      res.set_content(this->generateHTML(false), "text/html");
     });
 
     // The polling route handles automatic background updates
-    svr.Post("/nova/poll", [&](const httplib::Request &req,
-                               httplib::Response &res) {
+    svr.Post("/nova/poll", [this](const httplib::Request &req,
+                                httplib::Response &res) {
       this->initializeSessionContext(req, res);
+      std::string sid = np::Context::current_session_id;
 
       std::string targetId = req.get_header_value("X-Nova-Target");
-      if (!targetId.empty() && components.find(targetId) != components.end()) {
-        // PARTIAL RENDER: Only re-render the targeted component
-        NovaBuilder partialBuilder;
-        components[targetId]->render(partialBuilder);
+      Component *comp = nullptr;
+      if (!targetId.empty()) {
+        std::shared_lock<std::shared_mutex> lock(this->m_server->components_mutex);
+        auto it = this->m_server->components.find(targetId);
+        if (it != this->m_server->components.end()) {
+          comp = it->second;
+        }
+      }
+
+      if (comp) {
+        // PARTIAL RENDER: Only re-render the targeted component lock-free
+        NovaBuilder partialBuilder = this->createScopedContext(sid);
+        comp->render(partialBuilder);
         res.set_content(partialBuilder.generateHTML(false), "text/html");
       } else {
         res.status = 404;
       }
     });
 
-    // Wildcard fallback for direct URL navigation (e.g. hitting refresh on
-    // /about) Must be placed at the bottom so it doesn't swallow static files!
-    svr.Get(".*", [&](const httplib::Request &req, httplib::Response &res) {
+    // Wildcard fallback for direct URL navigation (e.g. hitting refresh on /about)
+    svr.Get(".*", [this](const httplib::Request &req, httplib::Response &res) {
       std::string path = req.path;
 
       // Ignore static assets and health probes that slipped through
@@ -955,20 +1146,26 @@ public:
 
       RouteMatch rm = this->resolveRoute(path);
       if (rm.matched) {
-        std::lock_guard<std::mutex> lock(this->builder_mutex);
         this->initializeSessionContext(req, res);
         std::string sid = np::Context::current_session_id;
-        this->session_current_paths[sid] = path;
-        this->current_path = path;
+        this->setSessionPath(sid, path);
 
-        if (callbacks.find("__onLoad") != callbacks.end()) {
-          callbacks["__onLoad"]();
+        std::function<void()> onLoadCb = nullptr;
+        {
+          std::shared_lock<std::shared_mutex> lock(this->m_server->callbacks_mutex);
+          auto it = this->m_server->callbacks.find("__onLoad");
+          if (it != this->m_server->callbacks.end()) {
+            onLoadCb = it->second;
+          }
+        }
+        if (onLoadCb) {
+          onLoadCb();
         }
 
-        this->clear();
         np::Context::current_params = rm.params;
-        rm.callback(*this, rm.params);
-        res.set_content(this->generateHTML(true), "text/html");
+        NovaBuilder scopedBuilder = this->createScopedContext(sid, rm.params);
+        rm.callback(scopedBuilder, rm.params);
+        res.set_content(scopedBuilder.generateHTML(true), "text/html");
       } else {
         res.status = 404;
         res.set_content("<h1>404 Not Found</h1>", "text/html");
@@ -988,5 +1185,6 @@ public:
     }
   }
 };
+
 
 } // namespace np
