@@ -38,3 +38,4 @@ jobs:
 
       - name: Build NovaCPP Binary
         run: cmake --build build --config Release --parallel 4
+

@@ -7,3 +7,10 @@ data
 *.db
 *.db-wal
 *.db-shm
+.agent
+.agent/**
+.agents
+.agents/**
+*.skill.md
+SKILL.md
+
