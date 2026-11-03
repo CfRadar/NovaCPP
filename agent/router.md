@@ -108,3 +108,4 @@ If no skill matches the requested task:
 1. Consult `docs/llms.txt` on the documentation site or inspect markdown pages in `NovaDocumentation/Frontend/src/content/`.
 2. Inspect the framework header files directly in `novacpp/*.hpp`.
 3. Do not invent classes, macros, or methods. State what is supported in the current version and propose an idiomatic pattern.
+

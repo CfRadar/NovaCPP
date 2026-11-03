@@ -69,3 +69,4 @@ To prevent hallucinated APIs, skills should annotate required symbols:
 <!-- symbols: NovaBuilder, JsonResponse, State, fetch -->
 ```
 The automated validator (`agent/tools/validate.py`) reads this comment and verifies that all symbols exist in `novacpp/*.hpp`.
+

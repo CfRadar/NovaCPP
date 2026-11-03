@@ -44,3 +44,4 @@ tasks:
 1. **Trigger Evaluations**: Verify that the skill's description triggers on relevant developer requests and stays idle for irrelevant ones.
 2. **Outcome Evaluations**: Verify that the generated code builds cleanly, starts the server, passes HTTP assertions, and adheres to security constraints.
 3. **Delta Evaluations**: Track the delta in turn count, token consumption, and success rate between runs *with* skills versus *without* skills.
+
