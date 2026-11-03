@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <chrono>
 #include "worker_pool.hpp"
+#include "reducers.hpp"
 
 namespace np {
 
@@ -23,7 +24,8 @@ using StepListener = std::function<void(const std::string& nodeName, size_t step
 template <typename TState>
 class StateGraph {
 public:
-    using NodeFunction = std::function<void(TState&)>;
+    using NodeFunction = std::function<void(const TState&, TState&)>;
+    using SimpleNodeFunction = std::function<void(TState&)>;
     using ConditionalRouter = std::function<std::string(const TState&)>;
 
     struct CompiledGraph {
@@ -32,6 +34,7 @@ public:
         std::unordered_map<std::string, std::pair<ConditionalRouter, std::unordered_map<std::string, std::string>>> conditionalEdges;
         std::string entryNode;
         size_t maxRecursionLimit = 50;
+        StateChannels<TState> channels;
 
         size_t nodeCount() const {
             return nodes.size();
@@ -69,7 +72,7 @@ public:
                         throw std::runtime_error("Graph node execution error: node '" + nodeName + "' not registered.");
                     }
 
-                    nodeIt->second(currentState);
+                    nodeIt->second(currentState, currentState);
 
                     if (listener) {
                         listener(nodeName, stepCount, currentState);
@@ -109,10 +112,21 @@ public:
                             throw std::runtime_error("Graph node execution error: node '" + nodeName + "' not registered.");
                         }
                         auto fn = nodeIt->second;
-                        futures.push_back(workers.enqueueWithFuture([fn, stateCopy = currentState]() mutable {
-                            fn(stateCopy);
-                            return stateCopy;
-                        }));
+
+                        if (channels.empty()) {
+                            // Default behavior: pass copy of currentState
+                            futures.push_back(workers.enqueueWithFuture([fn, stateCopy = currentState]() mutable {
+                                fn(stateCopy, stateCopy);
+                                return stateCopy;
+                            }));
+                        } else {
+                            // Delta-based concurrent channel execution: isolated delta container
+                            futures.push_back(workers.enqueueWithFuture([fn, currentSnapshot = currentState]() mutable {
+                                TState delta;
+                                fn(currentSnapshot, delta);
+                                return delta;
+                            }));
+                        }
                     }
 
                     // Collect results and resolve outgoing edges for each parallel branch
@@ -123,8 +137,12 @@ public:
                             listener(nodeName, stepCount, branchState);
                         }
                         
-                        // Default state propagation (Reducer aggregation expanded in Step 02)
-                        currentState = std::move(branchState);
+                        // Reconcile parallel branch delta through configured StateChannels
+                        if (!channels.empty()) {
+                            channels.merge(currentState, std::move(branchState));
+                        } else {
+                            currentState = std::move(branchState);
+                        }
 
                         auto condIt = conditionalEdges.find(nodeName);
                         if (condIt != conditionalEdges.end()) {
@@ -159,11 +177,23 @@ private:
     std::unordered_map<std::string, std::pair<ConditionalRouter, std::unordered_map<std::string, std::string>>> m_conditionalEdges;
     std::string m_entryNode;
     size_t m_maxRecursion = 50;
+    StateChannels<TState> m_channels;
 
 public:
     StateGraph() = default;
 
-    // Register a node with an isolated C++ lambda or function
+    // Register an in-place node receiving mutable state (or delta)
+    StateGraph& addNode(const std::string& name, SimpleNodeFunction fn) {
+        if (name == START || name == END) {
+            throw std::invalid_argument("Cannot use reserved node name: " + name);
+        }
+        m_nodes[name] = [fn](const TState&, TState& target) {
+            fn(target);
+        };
+        return *this;
+    }
+
+    // Register a context-aware delta node (inspects current state, writes mutations to delta)
     StateGraph& addNode(const std::string& name, NodeFunction fn) {
         if (name == START || name == END) {
             throw std::invalid_argument("Cannot use reserved node name: " + name);
@@ -196,6 +226,23 @@ public:
     ) {
         m_conditionalEdges[from] = {std::move(router), std::move(pathMap)};
         return *this;
+    }
+
+    // Configure state reduction channels pipeline
+    StateGraph& setChannels(StateChannels<TState> channels) {
+        m_channels = std::move(channels);
+        return *this;
+    }
+
+    // Register a specific member field reducer policy
+    template <typename MemberPtr, typename Reducer>
+    StateGraph& addChannel(MemberPtr member, Reducer reducer) {
+        m_channels.registerField(member, std::move(reducer));
+        return *this;
+    }
+
+    const StateChannels<TState>& channels() const {
+        return m_channels;
     }
 
     // Set maximum execution super-steps (recursion limit)
@@ -246,6 +293,7 @@ public:
         compiled.conditionalEdges = m_conditionalEdges;
         compiled.entryNode = m_entryNode;
         compiled.maxRecursionLimit = m_maxRecursion;
+        compiled.channels = m_channels;
         return compiled;
     }
 };

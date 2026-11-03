@@ -109,6 +109,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_graph.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_reducers.cpp")
+    add_executable(simulate_reducers ../Test/simulate_reducers.cpp)
+    target_include_directories(simulate_reducers PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_reducers ws2_32)
+    else()
+        target_link_libraries(simulate_reducers pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html

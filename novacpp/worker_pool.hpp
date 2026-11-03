@@ -142,9 +142,10 @@ public:
     }
 
     // Framework-wide default worker pool singleton
+    // Note: Allocated via pointer to prevent Windows Loader Lock deadlock during static CRT destruction
     static WorkerPool& defaultPool() {
-        static WorkerPool pool(4, 1000);
-        return pool;
+        static WorkerPool* pool = new WorkerPool(4, 1000);
+        return *pool;
     }
 };
 
