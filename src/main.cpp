@@ -63,7 +63,8 @@ int main() {
     g_runningApp = &np;
 
     // Optional: Initialize distributed Redis session store if REDIS_URL is provided
-    if (const char* redisUrl = std::getenv("REDIS_URL")) {
+    std::string redisUrl = np::getEnvOr("REDIS_URL", "");
+    if (!redisUrl.empty()) {
         std::cout << "[NovaCPP] Initializing distributed Redis state adapter from REDIS_URL" << std::endl;
         np::useStateStore(np::RedisStateStore::fromUri(redisUrl));
     }
@@ -121,10 +122,7 @@ int main() {
     });
 
     // 3. Start the Live Server on the Cloud-provided PORT (or default to 8080)
-    int port = 8080;
-    if (const char* env_p = std::getenv("PORT")) {
-        port = std::stoi(env_p);
-    }
+    int port = std::stoi(np::getEnvOr("PORT", "8080"));
     
     np.listen(port);
     

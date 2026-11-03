@@ -764,7 +764,7 @@ public:
     SessionStoreComponent() : Component("session-comp") {}
 
     void render(np::NovaBuilder& np) override {
-        bool hasRedis = std::getenv("REDIS_URL") != nullptr;
+        bool hasRedis = np::hasEnv("REDIS_URL");
         std::string mode = hasRedis ? "Distributed Redis" : "Thread-Local RAM";
         int touches = sessionTouchCount.get();
 

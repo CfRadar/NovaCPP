@@ -1,3 +1,4 @@
+#include "novacpp/platform.hpp"
 #include "Database.hpp"
 #include <iostream>
 #include <cstdlib>
@@ -15,12 +16,7 @@ std::mutex Database::s_dbMutex;
 static std::string normalizeDatabaseUri(const std::string& rawUri) {
     std::string uri = rawUri;
     if (uri.empty()) {
-        const char* envUrl = std::getenv("DATABASE_URL");
-        if (envUrl && std::string(envUrl).length() > 0) {
-            uri = envUrl;
-        } else {
-            uri = "./data/nova.db";
-        }
+        uri = np::getEnvOr("DATABASE_URL", "./data/nova.db");
     }
 
     if (uri == ":memory:") {

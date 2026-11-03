@@ -17,3 +17,4 @@ This directory is intended for page render functions and API route definitions.
 void renderHomePage(np::RenderContext& np);
 void renderAboutPage(np::RenderContext& np);
 ```
+

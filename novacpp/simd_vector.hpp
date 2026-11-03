@@ -257,14 +257,14 @@ public:
         scored.reserve(m_documents.size());
 
         for (const auto& doc : m_documents) {
-            size_t evalDim = std::min({m_dimension, queryEmbedding.size(), doc.embedding.size()});
+            size_t evalDim = (std::min)({m_dimension, queryEmbedding.size(), doc.embedding.size()});
             float score = cosineSimilaritySIMD(queryEmbedding.data(), doc.embedding.data(), evalDim);
             if (score >= minScore) {
                 scored.push_back({score, &doc});
             }
         }
 
-        size_t k = std::min(topK, scored.size());
+        size_t k = (std::min)(topK, scored.size());
         std::partial_sort(scored.begin(), scored.begin() + k, scored.end(),
             [](const auto& a, const auto& b) {
                 return a.first > b.first;

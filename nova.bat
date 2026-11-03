@@ -19,6 +19,17 @@ if "%1"=="dev" (
     cmake --build build
     cmake --build build --target run-html
     build\Debug\NovaCPP.exe
+) else if "%1"=="test" (
+    cmake --build build
+    if exist scripts\run-all-tests.py (
+        python scripts\run-all-tests.py
+    ) else (
+        ctest --test-dir build --output-on-failure
+    )
+) else if "%1"=="clean" (
+    echo [NovaCPP] Cleaning build artifacts...
+    if exist build rmdir /s /q build
+    echo [NovaCPP] Done.
 ) else (
-    echo Usage: nova [dev^|build^|run^|build run]
+    echo Usage: nova [run^|build^|test^|clean^|dev]
 )
