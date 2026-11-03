@@ -224,6 +224,63 @@ inline std::map<std::string, std::string> parseJsonMap(const std::string &jsonSt
   return result;
 }
 
+// Fluent response builder for JSON REST APIs, webhooks, and status handling
+struct JsonResponse {
+  int status = 200;
+  std::string body = "{}";
+  std::map<std::string, std::string> headers;
+
+  JsonResponse() = default;
+  explicit JsonResponse(std::string jsonBody, int statusCode = 200)
+      : status(statusCode), body(std::move(jsonBody)) {}
+
+  JsonResponse &withStatus(int code) {
+    status = code;
+    return *this;
+  }
+
+  JsonResponse &withHeader(const std::string &key, const std::string &value) {
+    headers[key] = value;
+    return *this;
+  }
+
+  void apply(httplib::Response &res) const {
+    res.status = status;
+    for (const auto &pair : headers) {
+      res.set_header(pair.first, pair.second);
+    }
+    res.set_content(body, "application/json");
+  }
+
+  static JsonResponse ok(const std::string &json = "{}") {
+    return JsonResponse(json, 200);
+  }
+
+  static JsonResponse created(const std::string &json = "{}") {
+    return JsonResponse(json, 201);
+  }
+
+  static JsonResponse badRequest(const std::string &errorMsg = "Bad Request") {
+    return JsonResponse("{\"error\":\"" + errorMsg + "\"}", 400);
+  }
+
+  static JsonResponse unauthorized(const std::string &errorMsg = "Unauthorized") {
+    return JsonResponse("{\"error\":\"" + errorMsg + "\"}", 401);
+  }
+
+  static JsonResponse forbidden(const std::string &errorMsg = "Forbidden") {
+    return JsonResponse("{\"error\":\"" + errorMsg + "\"}", 403);
+  }
+
+  static JsonResponse notFound(const std::string &errorMsg = "Not Found") {
+    return JsonResponse("{\"error\":\"" + errorMsg + "\"}", 404);
+  }
+
+  static JsonResponse serverError(const std::string &errorMsg = "Internal Server Error") {
+    return JsonResponse("{\"error\":\"" + errorMsg + "\"}", 500);
+  }
+};
+
 // Helper to generate a random session ID (thread-safe)
 inline std::string generateSessionId() {
   static std::mutex rng_mtx;
@@ -489,6 +546,107 @@ public:
         m_server->routes[path] = renderCallback;
       }
     }
+  }
+
+  // Expose underlying httplib::Server reference for advanced protocol extensions
+  httplib::Server &rawServer() {
+    return m_server->svr;
+  }
+
+  // Register raw HTTP route with direct Request and Response access
+  void rawRoute(const std::string &path, const std::string &method,
+                std::function<void(const httplib::Request &, httplib::Response &)> handler) {
+    if (!m_server) return;
+    std::string m = method;
+    std::transform(m.begin(), m.end(), m.begin(), ::toupper);
+    if (m == "GET") {
+      m_server->svr.Get(path, handler);
+    } else if (m == "POST") {
+      m_server->svr.Post(path, handler);
+    } else if (m == "PUT") {
+      m_server->svr.Put(path, handler);
+    } else if (m == "PATCH") {
+      m_server->svr.Patch(path, handler);
+    } else if (m == "DELETE") {
+      m_server->svr.Delete(path, handler);
+    } else if (m == "OPTIONS") {
+      m_server->svr.Options(path, handler);
+    }
+  }
+
+  // HTTP GET convenience helper
+  void get(const std::string &path,
+           std::function<void(const httplib::Request &, httplib::Response &)> handler) {
+    rawRoute(path, "GET", std::move(handler));
+  }
+
+  // HTTP POST convenience helper
+  void post(const std::string &path,
+            std::function<void(const httplib::Request &, httplib::Response &)> handler) {
+    rawRoute(path, "POST", std::move(handler));
+  }
+
+  // HTTP PUT convenience helper
+  void put(const std::string &path,
+           std::function<void(const httplib::Request &, httplib::Response &)> handler) {
+    rawRoute(path, "PUT", std::move(handler));
+  }
+
+  // HTTP DELETE convenience helper
+  void del(const std::string &path,
+           std::function<void(const httplib::Request &, httplib::Response &)> handler) {
+    rawRoute(path, "DELETE", std::move(handler));
+  }
+
+  // Register a JSON REST endpoint (GET and POST) supporting string, const char*, and JsonResponse
+  template <typename F>
+  void json(const std::string &path, F callback) {
+    if (!m_server) return;
+    auto handler = [callback](const httplib::Request &req, httplib::Response &res) {
+      if constexpr (std::is_invocable_v<F, const httplib::Request &>) {
+        using RetType = std::decay_t<std::invoke_result_t<F, const httplib::Request &>>;
+        if constexpr (std::is_same_v<RetType, JsonResponse>) {
+          JsonResponse jres = callback(req);
+          jres.apply(res);
+        } else {
+          res.set_content(std::string(callback(req)), "application/json");
+        }
+      } else {
+        using RetType = std::decay_t<std::invoke_result_t<F>>;
+        if constexpr (std::is_same_v<RetType, JsonResponse>) {
+          JsonResponse jres = callback();
+          jres.apply(res);
+        } else {
+          res.set_content(std::string(callback()), "application/json");
+        }
+      }
+    };
+    m_server->svr.Get(path, handler);
+    m_server->svr.Post(path, handler);
+  }
+
+  // Register a JSON REST endpoint with explicit HTTP method
+  template <typename F>
+  void json(const std::string &path, const std::string &method, F callback) {
+    rawRoute(path, method, [callback](const httplib::Request &req, httplib::Response &res) {
+      if constexpr (std::is_invocable_v<F, const httplib::Request &>) {
+        using RetType = std::decay_t<std::invoke_result_t<F, const httplib::Request &>>;
+        if constexpr (std::is_same_v<RetType, JsonResponse>) {
+          JsonResponse jres = callback(req);
+          jres.apply(res);
+        } else {
+          res.set_content(std::string(callback(req)), "application/json");
+        }
+      } else {
+        using RetType = std::decay_t<std::invoke_result_t<F>>;
+        if constexpr (std::is_same_v<RetType, JsonResponse>) {
+          JsonResponse jres = callback();
+          jres.apply(res);
+        } else {
+          res.set_content(std::string(callback()), "application/json");
+        }
+      }
+    });
   }
 
   // Resolve a path against static and dynamic routes

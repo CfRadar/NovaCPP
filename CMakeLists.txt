@@ -209,6 +209,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_lifetime_guard.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_rest_api.cpp")
+    add_executable(simulate_rest_api ../Test/simulate_rest_api.cpp)
+    target_include_directories(simulate_rest_api PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_rest_api PRIVATE ws2_32)
+    else()
+        target_link_libraries(simulate_rest_api PRIVATE pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html
