@@ -4,6 +4,14 @@ project(NovaCPP)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Suppress MSVC deprecation warnings across the entire build tree
+if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_options(/wd4996)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
 # Compile SQLite amalgamation once into an isolated reusable static library
 add_library(sqlite3_static STATIC novacpp/sqlite/sqlite3.c)
 target_include_directories(sqlite3_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/novacpp/sqlite)
@@ -226,6 +234,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/test_api_alignment.cpp")
         target_link_libraries(test_api_alignment PRIVATE sqlite3_static ws2_32)
     else()
         target_link_libraries(test_api_alignment PRIVATE sqlite3_static pthread ${CMAKE_DL_LIBS})
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/test_compiler_and_platform.cpp")
+    add_executable(test_compiler_and_platform ../Test/test_compiler_and_platform.cpp)
+    target_include_directories(test_compiler_and_platform PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(test_compiler_and_platform PRIVATE ws2_32)
+    else()
+        target_link_libraries(test_compiler_and_platform PRIVATE pthread)
     endif()
 endif()
 

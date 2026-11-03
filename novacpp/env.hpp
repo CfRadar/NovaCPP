@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform.hpp"
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -26,18 +27,6 @@ inline void setEnvVar(const std::string& key, const std::string& value) {
 #else
     setenv(key.c_str(), value.c_str(), 1);
 #endif
-}
-
-// Retrieves an environment variable with an optional fallback default
-inline std::string getEnv(const std::string& key, const std::string& defaultValue = "") {
-    const char* val = std::getenv(key.c_str());
-    return (val && std::string(val).length() > 0) ? std::string(val) : defaultValue;
-}
-
-// Checks if an environment variable exists and is non-empty
-inline bool hasEnv(const std::string& key) {
-    const char* val = std::getenv(key.c_str());
-    return (val && std::string(val).length() > 0);
 }
 
 // Loads and parses a standard .env file into the process environment
@@ -95,7 +84,7 @@ inline bool loadEnv(const std::string& envPath = ".env", bool overwrite = false)
         }
 
         if (!key.empty()) {
-            if (overwrite || std::getenv(key.c_str()) == nullptr) {
+            if (overwrite || !hasEnv(key)) {
                 setEnvVar(key, val);
             }
         }

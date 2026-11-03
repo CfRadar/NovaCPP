@@ -1,4 +1,5 @@
 #pragma once
+#include "platform.hpp"
 #include <ctime>
 #include <fstream>
 #include <functional>
@@ -824,9 +825,8 @@ public:
       sid = generateSessionId();
       bool isSecure = req.has_header("X-Forwarded-Proto") && 
                       req.get_header_value("X-Forwarded-Proto") == "https";
-      const char* env_p = std::getenv("ENVIRONMENT");
-      if (!env_p) env_p = std::getenv("NODE_ENV");
-      if (env_p && std::string(env_p) == "production") {
+      std::string env_p = np::getEnvOr("ENVIRONMENT", np::getEnvOr("NODE_ENV", ""));
+      if (env_p == "production") {
         isSecure = true;
       }
 
