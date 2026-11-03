@@ -23,6 +23,83 @@ struct FetchResponse {
         return status >= 200 && status < 300;
     }
 
+    bool isOk() const noexcept {
+        return ok();
+    }
+
+    // Lightweight key-value extractor for JSON payloads
+    std::string jsonField(const std::string& key) const {
+        std::string pattern = "\"" + key + "\"";
+        size_t pos = body.find(pattern);
+        if (pos == std::string::npos) return "";
+
+        size_t colon = body.find(':', pos + pattern.length());
+        if (colon == std::string::npos) return "";
+
+        size_t start = body.find_first_not_of(" \t\r\n", colon + 1);
+        if (start == std::string::npos) return "";
+
+        if (body[start] == '"') {
+            size_t end = body.find('"', start + 1);
+            if (end != std::string::npos) {
+                return body.substr(start + 1, end - start - 1);
+            }
+        } else {
+            size_t end = body.find_first_of(",}\r\n", start);
+            if (end == std::string::npos) end = body.length();
+            std::string val = body.substr(start, end - start);
+            while (!val.empty() && std::isspace(static_cast<unsigned char>(val.back()))) {
+                val.pop_back();
+            }
+            return val;
+        }
+        return "";
+    }
+
+    // Parses top-level JSON key-value pairs into a map
+    std::map<std::string, std::string> json() const {
+        std::map<std::string, std::string> result;
+        size_t i = 0;
+        while (i < body.length()) {
+            size_t keyStart = body.find('"', i);
+            if (keyStart == std::string::npos) break;
+            size_t keyEnd = body.find('"', keyStart + 1);
+            if (keyEnd == std::string::npos) break;
+            std::string k = body.substr(keyStart + 1, keyEnd - keyStart - 1);
+
+            size_t colon = body.find(':', keyEnd + 1);
+            if (colon == std::string::npos) break;
+
+            size_t valStart = body.find_first_not_of(" \t\r\n", colon + 1);
+            if (valStart == std::string::npos) break;
+
+            std::string v;
+            if (body[valStart] == '"') {
+                size_t valEnd = valStart + 1;
+                while (valEnd < body.length()) {
+                    if (body[valEnd] == '"' && body[valEnd - 1] != '\\') break;
+                    valEnd++;
+                }
+                if (valEnd < body.length()) {
+                    v = body.substr(valStart + 1, valEnd - valStart - 1);
+                    i = valEnd + 1;
+                } else {
+                    break;
+                }
+            } else {
+                size_t valEnd = body.find_first_of(",}\r\n", valStart);
+                if (valEnd == std::string::npos) valEnd = body.length();
+                v = body.substr(valStart, valEnd - valStart);
+                while (!v.empty() && std::isspace(static_cast<unsigned char>(v.back()))) {
+                    v.pop_back();
+                }
+                i = valEnd;
+            }
+            result[k] = v;
+        }
+        return result;
+    }
+
     bool isClientError() const noexcept {
         return status >= 400 && status < 500;
     }
@@ -410,3 +487,49 @@ inline FetchResponse fetch(const std::string& urlStr,
 } // namespace np
 
 #endif
+
+// ============================================================================
+// UNIVERSAL HIGH-LEVEL FETCH OVERLOADS & CONVENIENCE HELPERS
+// ============================================================================
+namespace np {
+
+// 1. GET with headers: np::fetch(url, headers)
+inline FetchResponse fetch(const std::string& urlStr,
+                           const std::map<std::string, std::string>& headersMap) {
+    return fetch(urlStr, "GET", "", headersMap);
+}
+
+// 2. Custom method with headers (no body): np::fetch(url, "DELETE", headers)
+inline FetchResponse fetch(const std::string& urlStr,
+                           const std::string& methodStr,
+                           const std::map<std::string, std::string>& headersMap) {
+    return fetch(urlStr, methodStr, "", headersMap);
+}
+
+// 3. HTTP GET helper: np::get(url, headers)
+inline FetchResponse get(const std::string& urlStr,
+                         const std::map<std::string, std::string>& headersMap = {}) {
+    return fetch(urlStr, "GET", "", headersMap);
+}
+
+// 4. HTTP POST helper: np::post(url, body, headers)
+inline FetchResponse post(const std::string& urlStr,
+                          const std::string& bodyStr = "",
+                          const std::map<std::string, std::string>& headersMap = {}) {
+    return fetch(urlStr, "POST", bodyStr, headersMap);
+}
+
+// 5. HTTP PUT helper: np::put(url, body, headers)
+inline FetchResponse put(const std::string& urlStr,
+                         const std::string& bodyStr = "",
+                         const std::map<std::string, std::string>& headersMap = {}) {
+    return fetch(urlStr, "PUT", bodyStr, headersMap);
+}
+
+// 6. HTTP DELETE helper: np::del(url, headers)
+inline FetchResponse del(const std::string& urlStr,
+                         const std::map<std::string, std::string>& headersMap = {}) {
+    return fetch(urlStr, "DELETE", "", headersMap);
+}
+
+} // namespace np
