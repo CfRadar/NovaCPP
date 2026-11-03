@@ -1,0 +1,96 @@
+---
+applyTo: "**/*.cpp,**/*.hpp"
+---
+
+# NovaCPP Authentication & Role-Based Access Control
+
+<!-- symbols: Auth, Database, RenderContext -->
+
+## When to use
+Use this skill when building signup/login flows, validating user passwords, guarding administrative pages, verifying session cookies, or managing user roles in `src/backend/Auth.cpp`.
+
+## Prerequisites
+- A NovaCPP project with `src/backend/Auth.hpp` and `src/backend/Database.hpp`.
+- SQLite database initialized and connected (`Database::connect()`).
+
+## Quick start
+```cpp
+#include "novacpp/nova.hpp"
+#include "src/backend/Auth.hpp"
+
+void renderDashboard(np::RenderContext& np) {
+    std::string sid = np::Context::current_session_id;
+
+    // Guard route against unauthenticated requests
+    if (!Auth::isAuthenticated(sid)) {
+        np << "<div class='bento-card col-12'><h2>Access Denied</h2><a href='/login'>Please log in</a></div>";
+        return;
+    }
+
+    std::string user = Auth::getCurrentUser(sid);
+    np << "<div class='bento-card col-12'><h2>Welcome, " + user + "</h2></div>";
+}
+```
+Full compilable source available in [`assets/auth_example.cpp`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-auth/assets/auth_example.cpp).
+
+## Steps
+1. **Initialize Auth Subsystem**:
+   In `src/main.cpp`, call `Auth::initializeSessions();` during startup after database initialization:
+   ```cpp
+   Database::connect();
+   Auth::initializeSessions();
+   ```
+2. **User Registration & Secure Hashing**:
+   Always hash passwords using cryptographic salt before database storage:
+   ```cpp
+   bool success = Auth::registerUser(username, plainPassword, "developer");
+   ```
+3. **User Login & Session Creation**:
+   Verify credentials and attach user identity to session cookie:
+   ```cpp
+   std::string sid = np::Context::current_session_id;
+   if (Auth::login(username, password, sid)) {
+       // User authenticated; redirect to dashboard
+   }
+   ```
+4. **Guarding Protected Routes (RBAC)**:
+   Inspect session credentials and roles in route handlers:
+   ```cpp
+   app.route("/admin", [](np::RenderContext& np) {
+       std::string sid = np::Context::current_session_id;
+       if (!Auth::hasRole(sid, "admin")) {
+           np << "<h1>403 Forbidden</h1>";
+           return;
+       }
+       // Render admin view...
+   });
+   ```
+5. **Logout**:
+   Invalidate credentials on user sign-out:
+   ```cpp
+   Auth::logout(np::Context::current_session_id);
+   ```
+
+## Rules
+- MUST call `Auth::initializeSessions();` during `main.cpp` boot.
+- MUST use cryptographic salt and hash functions; never store plain-text passwords.
+- MUST mark authentication cookies with `HttpOnly`, `SameSite=Lax`, and `Secure`.
+- NEVER transmit cleartext passwords in URL query parameters; use POST request body.
+- NEVER trust client-side role claims; verify roles against the server database on every request.
+
+## Common mistakes
+| Symptom | Cause | Fix |
+|---|---|---|
+| All users appear logged out | `Auth::initializeSessions()` omitted in `main.cpp` | Ensure `Auth::initializeSessions()` is called at server startup |
+| Session lost immediately after login | Client browser rejecting cookies | Ensure cookies use `Path=/` and `SameSite=Lax` |
+| Passwords exposed in logs | Password logged in debug output | Exclude credentials from logging statements |
+
+## Verify
+Verify authentication endpoints and session cookie lifecycle:
+```bash
+nova.bat test
+```
+The test suite verifies user authentication via `test-security-hardening.py`.
+
+## Go deeper
+- [`references/security-policy.md`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-auth/references/security-policy.md): In-depth security policies, entropy rules, and password hashing standards.

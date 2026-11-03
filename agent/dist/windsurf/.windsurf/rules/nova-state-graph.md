@@ -1,0 +1,107 @@
+# NovaCPP Rule: nova-state-graph
+
+# NovaCPP StateGraph Cyclic Workflow Engine
+
+<!-- symbols: StateGraph, START, END, StepListener, Command -->
+
+## When to use
+Use this skill when constructing AI agent architectures that require loops, iterative reflection, multi-step tool execution, or dynamic routing between planner, executor, and evaluator nodes in `novacpp/graph.hpp`.
+
+## Prerequisites
+- A NovaCPP project including `novacpp/nova.hpp` or `novacpp/graph.hpp`.
+- Thread pool initialized (`np::WorkerPool::instance()`).
+
+## Quick start
+```cpp
+#include "novacpp/nova.hpp"
+#include <iostream>
+
+struct AgentState {
+    std::string task;
+    int iterations = 0;
+    std::string result;
+};
+
+void runWorkflow() {
+    np::StateGraph<AgentState> graph;
+
+    graph.addNode("think", [](const AgentState& in, AgentState& out) {
+        out = in;
+        out.iterations++;
+        out.result = "Thought step: " + std::to_string(out.iterations);
+    });
+
+    graph.setEntryPoint("think");
+
+    graph.addConditionalEdges("think", [](const AgentState& s) {
+        return (s.iterations >= 3) ? np::END : "think";
+    }, { {"think", "think"}, {np::END, np::END} });
+
+    auto compiled = graph.compile();
+    AgentState initial{"Generate code", 0, ""};
+    AgentState finalState = compiled.invoke(initial);
+
+    std::cout << "Done: " << finalState.result << std::endl;
+}
+```
+Full compilable source available in [`assets/graph_example.cpp`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-state-graph/assets/graph_example.cpp).
+
+## Steps
+1. **Define State Structure**:
+   Create a plain struct containing user inputs, conversation history, iteration counters, and outputs:
+   ```cpp
+   struct ResearchState {
+       std::string topic;
+       std::vector<std::string> sources;
+       std::string summary;
+   };
+   ```
+2. **Register Nodes**:
+   Add processing steps as lambdas or functions accepting `(const State& in, State& out)`:
+   ```cpp
+   np::StateGraph<ResearchState> graph;
+   graph.addNode("gather", [](const ResearchState& in, ResearchState& out) {
+       out = in;
+       out.sources.push_back("Archive A");
+   });
+   ```
+3. **Configure Routing**:
+   Connect nodes with static edges (`graph.addEdge("A", "B")`) or conditional routing functions (`graph.addConditionalEdges`):
+   ```cpp
+   graph.setEntryPoint("gather");
+   graph.addEdge("gather", np::END);
+   ```
+4. **Compile and Invoke**:
+   Call `graph.compile()` to freeze topology and execute with `compiled.invoke(initialState)`:
+   ```cpp
+   auto app = graph.compile();
+   auto outcome = app.invoke(initialState);
+   ```
+5. **Visualize Topology**:
+   Generate standard Mermaid diagrams for debugging:
+   ```cpp
+   std::string mermaid = compiled.toMermaid();
+   ```
+
+## Rules
+- MUST call `graph.setEntryPoint(nodeName)` before `graph.compile()`.
+- MUST use `np::END` to signal workflow completion.
+- ALWAYS protect cyclic graphs with a recursion limit (`compiled.maxRecursionLimit = 50`) to avoid infinite loops.
+- NEVER block the HTTP worker thread with long-running agent workflows; invoke graphs inside `np::WorkerPool`.
+- State structures MUST be default-constructible and copyable.
+
+## Common mistakes
+| Symptom | Cause | Fix |
+|---|---|---|
+| Graph hangs indefinitely | Cyclic conditional edge missing exit condition | Verify termination branch routes to `np::END` |
+| `Conditional routing error at node 'X'` | Router lambda returned unmapped branch key | Add all return values to the decision map in `addConditionalEdges` |
+| Node cannot modify state | Node declared with value copy instead of reference | Use signature `void(const TState& in, TState& out)` |
+
+## Verify
+Verify compilation and invocation of state graphs:
+```bash
+cl /std:c++17 /EHsc /Inovacpp assets/graph_example.cpp
+```
+
+## Go deeper
+- [`references/pregel-engine.md`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-state-graph/references/pregel-engine.md): Pregel superstep execution, channel synchronization, and thread safety.
