@@ -9,6 +9,12 @@ import os
 import sys
 import subprocess
 import glob
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
 
 def find_cl_exe():
     # 1. Check in PATH
@@ -60,7 +66,7 @@ def main():
     if sys.platform == "win32":
         cl_path = find_cl_exe()
         if not cl_path:
-            print("  [WARN] MSVC cl.exe not located on system; skipping local compile verification.")
+            print("  [WARN] MSVC cl.exe not located on system; skipping local compile verification.", flush=True)
             sys.exit(0)
 
         includes = [
@@ -72,31 +78,48 @@ def main():
         ]
         inc_flags = [f"/I{inc}" for inc in includes if os.path.isdir(inc)]
 
-        for snip in snippets:
+        def compile_one(snip):
             rel = os.path.relpath(snip, repo_root)
             cmd = [cl_path, "/std:c++17", "/Zs", "/EHsc", "/W4", "/wd4996", "/wd4100", "/wd4127", "/wd4245"] + inc_flags + [snip]
             res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                passed += 1
-                print(f"  [PASS] {rel}")
-            else:
-                failed += 1
-                print(f"  [FAIL] {rel}")
-                print(res.stdout)
-                print(res.stderr)
+            return rel, res.returncode == 0, res.stdout, res.stderr
+
+        workers = min(8, os.cpu_count() or 4)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_snip = {executor.submit(compile_one, snip): snip for snip in snippets}
+            for fut in as_completed(future_to_snip):
+                rel, ok, out, err = fut.result()
+                if ok:
+                    passed += 1
+                    print(f"  [PASS] {rel}", flush=True)
+                else:
+                    failed += 1
+                    print(f"  [FAIL] {rel}", flush=True)
+                    if out:
+                        print(out, flush=True)
+                    if err:
+                        print(err, flush=True)
     else:
         compiler = "g++" if shutil.which("g++") else "clang++"
-        for snip in snippets:
+        def compile_one_posix(snip):
             rel = os.path.relpath(snip, repo_root)
             cmd = [compiler, "-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", f"-I{repo_root}", snip]
             res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                passed += 1
-                print(f"  [PASS] {rel}")
-            else:
-                failed += 1
-                print(f"  [FAIL] {rel}")
-                print(res.stderr)
+            return rel, res.returncode == 0, res.stdout, res.stderr
+
+        workers = min(8, os.cpu_count() or 4)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_snip = {executor.submit(compile_one_posix, snip): snip for snip in snippets}
+            for fut in as_completed(future_to_snip):
+                rel, ok, out, err = fut.result()
+                if ok:
+                    passed += 1
+                    print(f"  [PASS] {rel}", flush=True)
+                else:
+                    failed += 1
+                    print(f"  [FAIL] {rel}", flush=True)
+                    if err:
+                        print(err, flush=True)
 
     print("\n" + "=" * 70)
     if failed == 0:
