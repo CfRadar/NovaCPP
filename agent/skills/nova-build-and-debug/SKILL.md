@@ -14,7 +14,7 @@ metadata:
 
 # Building & Debugging NovaCPP Applications
 
-<!-- symbols: ComponentGuard, isAddressOnCurrentStack, getEnvOr -->
+<!-- symbols: renderComponent, isAddressOnCurrentStack, getEnvOr -->
 
 ## When to use
 Use this skill when diagnosing compiler errors, unresolved linker symbols, compiler warning mitigation, stack guard exceptions, or runtime crashes in a NovaCPP project.

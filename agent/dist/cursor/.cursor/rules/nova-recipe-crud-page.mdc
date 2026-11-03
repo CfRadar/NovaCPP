@@ -6,7 +6,7 @@ alwaysApply: false
 
 # NovaCPP End-to-End Recipe: Interactive CRUD Management Page
 
-<!-- symbols: Database, Component, RenderContext, onForm, onClick -->
+<!-- symbols: Database, Component, RenderContext, NovaBuilder, SQLiteConnection -->
 
 ## When to use
 Use this recipe when creating a complete create, read, update, and delete (CRUD) management dashboard or table view with out-of-band DOM replacement in NovaCPP.

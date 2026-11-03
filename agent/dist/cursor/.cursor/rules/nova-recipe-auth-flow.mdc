@@ -6,7 +6,7 @@ alwaysApply: false
 
 # NovaCPP End-to-End Recipe: Full Authentication & Role Flow
 
-<!-- symbols: Auth, Database, RenderContext, onForm, isAuthenticated -->
+<!-- symbols: Auth, Database, RenderContext, NovaBuilder, SQLiteConnection -->
 
 ## When to use
 Use this recipe when building user accounts, credential registration, sign-in forms, cookie-based session tracking, and protected administrator dashboards in NovaCPP.

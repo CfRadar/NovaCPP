@@ -430,7 +430,7 @@ Open developer tools Network tab, click a `nova-click` button, and inspect the r
 
 # Building & Debugging NovaCPP Applications
 
-<!-- symbols: ComponentGuard, isAddressOnCurrentStack, getEnvOr -->
+<!-- symbols: renderComponent, isAddressOnCurrentStack, getEnvOr -->
 
 ## When to use
 Use this skill when diagnosing compiler errors, unresolved linker symbols, compiler warning mitigation, stack guard exceptions, or runtime crashes in a NovaCPP project.
@@ -1158,7 +1158,7 @@ curl -N http://localhost:8080/api/chat/stream
 
 # NovaCPP End-to-End Recipe: Full Authentication & Role Flow
 
-<!-- symbols: Auth, Database, RenderContext, onForm, isAuthenticated -->
+<!-- symbols: Auth, Database, RenderContext, NovaBuilder, SQLiteConnection -->
 
 ## When to use
 Use this recipe when building user accounts, credential registration, sign-in forms, cookie-based session tracking, and protected administrator dashboards in NovaCPP.
@@ -1268,7 +1268,7 @@ Expect HTTP 302 redirect to `/login` when unauthenticated.
 
 # NovaCPP End-to-End Recipe: Interactive CRUD Management Page
 
-<!-- symbols: Database, Component, RenderContext, onForm, onClick -->
+<!-- symbols: Database, Component, RenderContext, NovaBuilder, SQLiteConnection -->
 
 ## When to use
 Use this recipe when creating a complete create, read, update, and delete (CRUD) management dashboard or table view with out-of-band DOM replacement in NovaCPP.
@@ -1383,7 +1383,7 @@ curl -X POST http://localhost:8080/api/nova/form -d "action=create_note&title=Te
 
 # NovaCPP End-to-End Recipe: Production Containerization & Deployment
 
-<!-- symbols: ServerConfig, RedisStateStore, getEnvOr, healthz, Dockerfile -->
+<!-- symbols: NovaBuilder, RedisStateStore, getEnvOr, useStateStore, WorkerPool -->
 
 ## When to use
 Use this recipe when taking a NovaCPP application from local development to production container platforms (Docker, Kubernetes, AWS ECS, Fly.io, Railway) with automated health probes and Redis session clustering.

@@ -2,7 +2,7 @@
 
 # NovaCPP End-to-End Recipe: Production Containerization & Deployment
 
-<!-- symbols: ServerConfig, RedisStateStore, getEnvOr, healthz, Dockerfile -->
+<!-- symbols: NovaBuilder, RedisStateStore, getEnvOr, useStateStore, WorkerPool -->
 
 ## When to use
 Use this recipe when taking a NovaCPP application from local development to production container platforms (Docker, Kubernetes, AWS ECS, Fly.io, Railway) with automated health probes and Redis session clustering.
