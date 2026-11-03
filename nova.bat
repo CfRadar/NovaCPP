@@ -30,6 +30,8 @@ if "%1"=="dev" (
     echo [NovaCPP] Cleaning build artifacts...
     if exist build rmdir /s /q build
     echo [NovaCPP] Done.
+) else if "%1"=="agent" (
+    node scripts\agent-cli.js %2 %3 %4 %5
 ) else (
-    echo Usage: nova [run^|build^|test^|clean^|dev]
+    echo Usage: nova [run^|build^|test^|clean^|dev^|agent]
 )

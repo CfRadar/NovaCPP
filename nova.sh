@@ -85,8 +85,17 @@ case "$COMMAND" in
             exec "$BUILD_DIR/NovaCPP"
         fi
         ;;
+    agent)
+        shift
+        if [ -f "scripts/agent-cli.js" ] && command -v node > /dev/null 2>&1; then
+            node scripts/agent-cli.js "$@"
+        else
+            echo "Error: Node.js and scripts/agent-cli.js required to run agent commands."
+            exit 1
+        fi
+        ;;
     *)
-        echo "Usage: ./nova.sh {run|build|test|clean|dev}"
+        echo "Usage: ./nova.sh {run|build|test|clean|dev|agent}"
         exit 1
         ;;
 esac
