@@ -114,6 +114,26 @@ int main() {
             << "</div>";
     });
 
+    // 2b. Native REST API & JSON Endpoints
+    np.json("/api/status", [](const httplib::Request&) -> np::JsonResponse {
+        return np::JsonResponse::ok(R"({"status":"online","version":"2.1.0","framework":"NovaCPP"})");
+    });
+
+    np.json("/api/users", [](const httplib::Request&) -> np::JsonResponse {
+        auto rows = Database::query("SELECT id, name, email, role FROM users;");
+        std::string json = "{\"users\":[";
+        for (size_t i = 0; i < rows.size(); ++i) {
+            if (i > 0) json += ",";
+            json += "{\"id\":" + rows[i]["id"] + ",\"name\":\"" + rows[i]["name"] + "\",\"email\":\"" + rows[i]["email"] + "\",\"role\":\"" + rows[i]["role"] + "\"}";
+        }
+        json += "]}";
+        return np::JsonResponse::ok(json);
+    });
+
+    np.get("/api/ping", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content("pong", "text/plain");
+    });
+
     // Asynchronous background task trigger demonstration
     np.onClick("async_job", [&np]() {
         np.enqueueTask([]() {
