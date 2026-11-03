@@ -546,6 +546,18 @@ public:
         return *this;
     }
 
+    // Register a functional node receiving state by value and returning transformed state
+    template <typename F, typename std::enable_if_t<std::is_invocable_r_v<TState, F, TState>, int> = 0>
+    StateGraph& addNode(const std::string& name, F fn) {
+        if (name == START || name == END) {
+            throw std::invalid_argument("Cannot use reserved node name: " + name);
+        }
+        m_nodes[name] = [fn](const TState&, TState& target) {
+            target = fn(target);
+        };
+        return *this;
+    }
+
     // Register a context-aware delta node (inspects current state, writes mutations to delta)
     StateGraph& addNode(const std::string& name, NodeFunction fn) {
         if (name == START || name == END) {
@@ -743,5 +755,9 @@ public:
         return compiled;
     }
 };
+
+// Ergonomic alias for StateGraph
+template<typename TState>
+using Graph = StateGraph<TState>;
 
 } // namespace np

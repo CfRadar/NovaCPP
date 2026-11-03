@@ -446,6 +446,35 @@ public:
     return out;
   }
 
+  // Ergonomic alias for str()
+  std::string getHtml() const {
+    return str();
+  }
+
+  // Manually trigger a registered click action (useful for automated testing)
+  bool executeClick(const std::string &actionName) {
+    if (!m_server) return false;
+    std::shared_lock<std::shared_mutex> lock(m_server->callbacks_mutex);
+    auto it = m_server->callbacks.find(actionName);
+    if (it != m_server->callbacks.end()) {
+      it->second();
+      return true;
+    }
+    return false;
+  }
+
+  // Manually trigger a registered form submission (useful for automated testing)
+  bool executeForm(const std::string &actionName, const std::map<std::string, std::string> &data) {
+    if (!m_server) return false;
+    std::shared_lock<std::shared_mutex> lock(m_server->callbacks_mutex);
+    auto it = m_server->form_callbacks.find(actionName);
+    if (it != m_server->form_callbacks.end()) {
+      it->second(data);
+      return true;
+    }
+    return false;
+  }
+
   const std::string &sessionId() const {
     return m_sessionId;
   }

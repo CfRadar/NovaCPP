@@ -247,6 +247,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/test_compiler_and_platform.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/test_boilerplate_flow.cpp")
+    add_executable(test_boilerplate_flow ../Test/test_boilerplate_flow.cpp)
+    target_include_directories(test_boilerplate_flow PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(test_boilerplate_flow PRIVATE ws2_32)
+    else()
+        target_link_libraries(test_boilerplate_flow PRIVATE pthread)
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html
