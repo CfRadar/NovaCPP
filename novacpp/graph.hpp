@@ -641,6 +641,14 @@ public:
         return *this;
     }
 
+    StateGraph& addConditionalEdges(
+        const std::string& from,
+        ConditionalRouter router,
+        std::unordered_map<std::string, std::string> pathMap
+    ) {
+        return addConditionalEdge(from, std::move(router), std::move(pathMap));
+    }
+
     // Configure state reduction channels pipeline
     StateGraph& setChannels(StateChannels<TState> channels) {
         m_channels = std::move(channels);
