@@ -6,6 +6,7 @@
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
+#include <mutex>
 
 namespace np {
 
@@ -127,6 +128,41 @@ public:
            << "  </div>\n"
            << "</div>\n";
         return ss.str();
+    }
+};
+
+
+// BreakpointManager adapter matching documentation specifications
+class BreakpointManager {
+private:
+    std::unordered_set<std::string> m_interruptedNodes;
+    mutable std::mutex m_mutex;
+
+public:
+    void addBreakpoint(const std::string& nodeName) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_interruptedNodes.insert(nodeName);
+    }
+
+    void removeBreakpoint(const std::string& nodeName) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_interruptedNodes.erase(nodeName);
+    }
+
+    bool hasBreakpoint(const std::string& nodeName) const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_interruptedNodes.find(nodeName) != m_interruptedNodes.end();
+    }
+
+    void checkAndInterrupt(const std::string& nodeName, const std::string& reason = "Human intervention required") const {
+        if (hasBreakpoint(nodeName)) {
+            InterruptPayload p;
+            p.nodeId = nodeName;
+            p.message = reason;
+            p.actionRequired = "approve";
+            p.resumeSameNode = false;
+            np::interrupt(std::move(p));
+        }
     }
 };
 

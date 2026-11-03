@@ -196,6 +196,22 @@ public:
         insert(VectorDocument(std::move(id), std::move(text), std::move(embedding), std::move(meta)));
     }
 
+    // Documentation overloads for addDocument:
+    void addDocument(VectorDocument doc) {
+        insert(std::move(doc));
+    }
+
+    void addDocument(std::string id, std::vector<float> embedding, std::string text,
+                     std::unordered_map<std::string, std::string> meta = {}) {
+        insert(std::move(id), std::move(text), std::move(embedding), std::move(meta));
+    }
+
+    void addDocument(std::string id, std::string text, std::vector<float> embedding,
+                     std::unordered_map<std::string, std::string> meta = {}) {
+        insert(std::move(id), std::move(text), std::move(embedding), std::move(meta));
+    }
+
+
     bool remove(const std::string& id) {
         std::lock_guard<std::mutex> lock(m_mtx);
         for (auto it = m_documents.begin(); it != m_documents.end(); ++it) {

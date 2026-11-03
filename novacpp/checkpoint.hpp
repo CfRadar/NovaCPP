@@ -363,4 +363,17 @@ public:
     }
 };
 
+
+// ============================================================================
+// Documentation & Backward-Compatibility Type Aliases
+// ============================================================================
+template <typename TState>
+using WALCheckpointEngine = SQLiteCheckpointer<TState>;
+
+template <typename TState>
+using MemoryCheckpointEngine = InMemoryCheckpointer<TState>;
+
+template <typename TState>
+using SqliteCheckpointer = SQLiteCheckpointer<TState>;
+
 } // namespace np

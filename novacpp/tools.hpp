@@ -153,6 +153,19 @@ struct ToolResult {
         json += "\"}";
         return json;
     }
+
+    // Seamless implicit conversion to std::string
+    operator std::string() const {
+        return content;
+    }
+
+    std::string output() const {
+        return content;
+    }
+
+    bool success() const noexcept {
+        return !isError;
+    }
 };
 
 // Abstract Tool interface
@@ -311,6 +324,15 @@ public:
         } catch (const std::exception& e) {
             return "Exception in tool '" + name + "': " + std::string(e.what());
         }
+    }
+
+    // Direct execution returning structured ToolResult
+    ToolResult executeTool(const std::string& name, const std::unordered_map<std::string, std::string>& args) {
+        ToolCall call;
+        call.id = "call_" + name;
+        call.name = name;
+        call.arguments = args;
+        return executeCall(call);
     }
 
     // Execute a structured ToolCall

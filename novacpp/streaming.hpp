@@ -106,6 +106,7 @@ public:
 private:
     Broadcaster m_broadcaster;
     std::vector<Listener> m_subscribers;
+    std::vector<StreamMessage> m_history;
     mutable std::mutex m_mtx;
 
 public:
@@ -160,6 +161,7 @@ public:
         Broadcaster broadcasterCopy;
         {
             std::lock_guard<std::mutex> lock(m_mtx);
+            m_history.push_back(msg);
             subsCopy = m_subscribers;
             broadcasterCopy = m_broadcaster;
         }
@@ -171,6 +173,17 @@ public:
         for (auto& sub : subsCopy) {
             if (sub) sub(msg);
         }
+    }
+
+    std::vector<StreamMessage> drain() {
+        std::lock_guard<std::mutex> lock(m_mtx);
+        std::vector<StreamMessage> out = std::move(m_history);
+        m_history.clear();
+        return out;
+    }
+
+    void emitToken(const std::string& nodeName, std::string_view token) {
+        emit(StreamMessage(StreamEventType::Token, nodeName, std::string(token)));
     }
 
     void emitToken(std::string_view token) {
@@ -206,5 +219,9 @@ public:
         emit(StreamMessage(StreamEventType::Custom, targetId, jsonPayload, "stream-swap"));
     }
 };
+
+
+// SSEChannel alias pointing to StreamEmitter matching documentation
+using SSEChannel = StreamEmitter;
 
 } // namespace np

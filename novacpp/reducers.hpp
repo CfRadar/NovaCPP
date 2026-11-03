@@ -96,6 +96,26 @@ struct Add {
 // StateChannels: Concurrent Reduction Pipeline for Strongly-Typed State
 // ============================================================================
 
+// Reducer policy enumeration for documented high-level channel ergonomics
+enum class ReducerType {
+    REPLACE,
+    APPEND,
+    MAX_VALUE,
+    MIN_VALUE,
+    ADD,
+    MERGE_MAP
+};
+
+// Ergonomic Channel descriptor bridging documentation concepts to StateChannels
+template <typename T>
+struct Channel {
+    std::string fieldName;
+    ReducerType type;
+
+    Channel(std::string name, ReducerType redType = ReducerType::REPLACE)
+        : fieldName(std::move(name)), type(redType) {}
+};
+
 template <typename TState>
 class StateChannels {
 public:
@@ -123,6 +143,10 @@ public:
 
     size_t channelCount() const {
         return m_reducers.size();
+    }
+
+    size_t size() const noexcept {
+        return channelCount();
     }
 
     bool empty() const {

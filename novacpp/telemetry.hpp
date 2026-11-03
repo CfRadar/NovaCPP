@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <atomic>
+#include <mutex>
 #include <chrono>
 #include <sstream>
 #include <memory>
@@ -165,6 +166,59 @@ struct ExecutionBudget {
         auto now = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime);
         return elapsed >= timeoutMs;
+    }
+};
+
+
+// Resilient Circuit Breaker for agent execution guarding
+class CircuitBreaker {
+private:
+    int m_failureThreshold;
+    std::chrono::milliseconds m_cooldown;
+    std::atomic<int> m_failureCount{0};
+    std::atomic<bool> m_open{false};
+    std::chrono::steady_clock::time_point m_lastTripTime;
+    mutable std::mutex m_mutex;
+
+public:
+    explicit CircuitBreaker(int failureThreshold = 5, std::chrono::milliseconds cooldown = std::chrono::milliseconds(5000))
+        : m_failureThreshold(failureThreshold), m_cooldown(cooldown) {}
+
+    bool allowExecution() {
+        if (!m_open.load(std::memory_order_relaxed)) {
+            return true;
+        }
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto now = std::chrono::steady_clock::now();
+        if (now - m_lastTripTime > m_cooldown) {
+            // Half-open state: permit single attempt
+            m_open.store(false, std::memory_order_relaxed);
+            m_failureCount.store(0, std::memory_order_relaxed);
+            return true;
+        }
+        return false;
+    }
+
+    void recordSuccess() {
+        m_failureCount.store(0, std::memory_order_relaxed);
+        m_open.store(false, std::memory_order_relaxed);
+    }
+
+    void recordFailure() {
+        if (++m_failureCount >= m_failureThreshold) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_open.store(true, std::memory_order_relaxed);
+            m_lastTripTime = std::chrono::steady_clock::now();
+        }
+    }
+
+    [[nodiscard]] bool isOpen() const noexcept {
+        return m_open.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] int failureCount() const noexcept {
+        return m_failureCount.load(std::memory_order_relaxed);
     }
 };
 

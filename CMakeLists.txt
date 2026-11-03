@@ -219,6 +219,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_rest_api.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/test_api_alignment.cpp")
+    add_executable(test_api_alignment ../Test/test_api_alignment.cpp)
+    target_include_directories(test_api_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(test_api_alignment PRIVATE sqlite3_static ws2_32)
+    else()
+        target_link_libraries(test_api_alignment PRIVATE sqlite3_static pthread ${CMAKE_DL_LIBS})
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html

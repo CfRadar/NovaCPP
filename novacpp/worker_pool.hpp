@@ -128,6 +128,11 @@ public:
         return m_workers.size();
     }
 
+    // Container-style size() alias for threadCount()
+    [[nodiscard]] size_t size() const {
+        return threadCount();
+    }
+
     size_t maxCapacity() const {
         return m_maxCapacity;
     }
