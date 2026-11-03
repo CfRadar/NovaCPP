@@ -202,6 +202,21 @@ public:
         return *this;
     }
 
+    // Embed a compiled child subgraph as an atomic node in this parent graph
+    template <typename TChild>
+    StateGraph& addSubgraph(
+        const std::string& nodeName,
+        typename StateGraph<TChild>::CompiledGraph childGraph,
+        std::function<TChild(const TState&)> stateExtractor,
+        std::function<void(TState&, TChild&&)> stateReconciler
+    ) {
+        return addNode(nodeName, [childGraph, stateExtractor, stateReconciler](TState& parentState) mutable {
+            TChild childInput = stateExtractor(parentState);
+            TChild childOutput = childGraph.invoke(std::move(childInput));
+            stateReconciler(parentState, std::move(childOutput));
+        });
+    }
+
     // Set graph entry point
     StateGraph& setEntryPoint(const std::string& nodeName) {
         m_entryNode = nodeName;
