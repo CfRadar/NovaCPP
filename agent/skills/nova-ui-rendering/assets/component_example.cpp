@@ -39,3 +39,4 @@ int main() {
     app.route("/", renderDemoPage);
     return 0;
 }
+

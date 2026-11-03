@@ -19,3 +19,4 @@ As soon as `renderHomePage` returns, its stack frame is popped and the memory at
 When a user subsequently clicks `<button nova-target="my-comp">`, the server receives `POST /nova/action/...` with `X-Nova-Target: my-comp`. The server attempts to look up `my-comp` in `components` and execute `comp->render()`. If `comp` was on the popped stack, this triggers an **access violation / use-after-free**.
 
 NovaCPP includes an active Stack Guard `isAddressOnCurrentStack(&comp)` that prevents this failure mode by aborting with an informative `std::logic_error` immediately during development.
+

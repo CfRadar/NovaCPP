@@ -34,3 +34,4 @@ When multiple component IDs are targeted (`X-Nova-Target: id1, id2`):
        if (targetEl) targetEl.outerHTML = tpl.innerHTML;
    });
    ```
+

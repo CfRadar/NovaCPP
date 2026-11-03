@@ -85,3 +85,4 @@ dir src\frontend, src\backend, src\components
 
 ## Go deeper
 - [`references/monolith-architecture.md`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-project-structure/references/monolith-architecture.md): Deep dive into shared-memory in-process execution benefits over microservices.
+

@@ -24,3 +24,4 @@ NovaCPP uses a unique pointer-based component model:
 2. When a surgical request arrives (`X-Nova-Target: comp-id`), the server looks up the pointer and calls `comp->render(partialBuilder)`.
 3. If the component was allocated on the stack inside a route callback, its memory is freed as soon as the initial HTTP request finishes. Subsequent requests targeting that component would encounter a **use-after-free** access violation.
 4. NovaCPP includes runtime **Stack Guards** (`isAddressOnCurrentStack`) that immediately throw `std::logic_error` if a local stack variable is registered, catching bugs before they manifest in production.
+

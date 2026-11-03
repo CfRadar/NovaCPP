@@ -106,3 +106,4 @@ Expect HTTP 200 with response payload `pong`.
 
 ## Go deeper
 - [`references/prerequisites.md`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-getting-started/references/prerequisites.md): Detailed toolchain, operating system requirements, and CMake generator flags.
+

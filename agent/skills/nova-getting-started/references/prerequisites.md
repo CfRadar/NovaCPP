@@ -29,3 +29,4 @@ The `create-novacpp` CLI supports the following flags:
 - `npx create-novacpp <project-name>`: Full showcase with Bento Grid, interactive components, and SQLite WAL database.
 - `npx create-novacpp <project-name> --minimal`: Clean starter template under 150 lines (`Boilerplate.cpp`).
 - `npx create-novacpp <project-name> --help`: Displays usage guide.
+

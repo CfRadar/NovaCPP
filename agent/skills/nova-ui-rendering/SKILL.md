@@ -108,3 +108,4 @@ Verify that the component renders inside a `<div id="your-comp-id">` wrapper ele
 
 ## Go deeper
 - [`references/component-lifetimes.md`](file:///d:/ALL_USER_DATA/Nova/NovaCPP/agent/skills/nova-ui-rendering/references/component-lifetimes.md): Complete guide to stack vs heap allocation, stack guards, and thread-local render builders.
+

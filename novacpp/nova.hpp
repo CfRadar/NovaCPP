@@ -9,6 +9,7 @@
 #include "env.hpp"
 #include "html.hpp"
 #include "state.hpp"
+#include "redis_state.hpp"
 #include "fetch.hpp"
 #include "worker_pool.hpp"
 #include "graph.hpp"
