@@ -18,6 +18,8 @@
 #include <vector>
 #include <thread>
 #include <regex>
+#include <type_traits>
+#include <stdexcept>
 #include "state.hpp"
 #include "worker_pool.hpp"
 
@@ -107,6 +109,27 @@ public:
   virtual ~Component() = default;
 };
 
+namespace internal {
+
+// Detects if a pointer resides within the current thread's stack frame
+inline bool isAddressOnCurrentStack(const void* ptr) noexcept {
+  volatile char anchor = 0;
+  const uintptr_t currentStackAddr = reinterpret_cast<uintptr_t>(&anchor);
+  const uintptr_t targetAddr = reinterpret_cast<uintptr_t>(ptr);
+
+  // Typical thread stacks range from 1MB to 8MB.
+  // In 64-bit address spaces, heap and global/static segments are gigabytes or terabytes away.
+  constexpr uintptr_t STACK_FRAME_ESTIMATE = 8 * 1024 * 1024; // 8MB
+
+  if (targetAddr >= currentStackAddr) {
+    return (targetAddr - currentStackAddr) < STACK_FRAME_ESTIMATE;
+  } else {
+    return (currentStackAddr - targetAddr) < STACK_FRAME_ESTIMATE;
+  }
+}
+
+} // namespace internal
+
 // Declarative UI helpers for zero-JS npm ecosystem integration
 namespace ui {
   // Returns data-nova-effect attribute string for interactive elements
@@ -151,6 +174,8 @@ namespace ui {
 // Include the cpp-httplib web server (This is massive, so we include it AFTER
 // Component definition)
 #include "internal/httplib.h"
+#include <type_traits>
+#include <stdexcept>
 #include "state.hpp"
 
 namespace np {
@@ -252,6 +277,7 @@ struct ServerContext {
 
   mutable std::shared_mutex components_mutex;
   std::map<std::string, Component *> components;
+  std::map<std::string, std::shared_ptr<Component>> owned_components;
 
   mutable std::mutex session_paths_mutex;
   std::string current_path = "/";
@@ -502,12 +528,8 @@ public:
     return match;
   }
 
-  // Register and render a modular component
-  void renderComponent(Component &comp, int pollIntervalMs = 0) {
-    if (m_server) {
-      std::unique_lock<std::shared_mutex> lock(m_server->components_mutex);
-      m_server->components[comp.id] = &comp;
-    }
+private:
+  void renderComponentMarkup(Component &comp, int pollIntervalMs = 0) {
     if (pollIntervalMs > 0) {
       elements.push_back("<div id=\"" + comp.id + "\" nova-poll=\"" +
                          std::to_string(pollIntervalMs) + "\">");
@@ -516,6 +538,41 @@ public:
     }
     comp.render(*this);
     elements.push_back("</div>");
+  }
+
+public:
+  // Register and render a modular component by reference with stack lifetime guard
+  void renderComponent(Component &comp, int pollIntervalMs = 0) {
+#ifndef NOVACPP_DISABLE_STACK_GUARDS
+    if (internal::isAddressOnCurrentStack(&comp)) {
+      throw std::logic_error(
+          "\n[NovaCPP LIFETIME VIOLATION] Component '" + comp.id + "' was instantiated on the stack!\n"
+          "Components registered in NovaCPP must persist across HTTP requests for surgical DOM updates.\n"
+          "Declare your component with static lifetime or global scope:\n"
+          "    static " + comp.id + "Comp myComp;\n"
+          "    np.renderComponent(myComp);\n"
+          "Or pass a std::shared_ptr on the heap:\n"
+          "    np.renderComponent(std::make_shared<" + comp.id + "Comp>());\n"
+      );
+    }
+#endif
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->components_mutex);
+      m_server->components[comp.id] = &comp;
+    }
+    renderComponentMarkup(comp, pollIntervalMs);
+  }
+
+  // Register and render a modular component managed by std::shared_ptr
+  template <typename TComponent, typename = std::enable_if_t<std::is_base_of_v<Component, TComponent>>>
+  void renderComponent(std::shared_ptr<TComponent> comp, int pollIntervalMs = 0) {
+    if (!comp) return;
+    if (m_server) {
+      std::unique_lock<std::shared_mutex> lock(m_server->components_mutex);
+      m_server->owned_components[comp->id] = comp;
+      m_server->components[comp->id] = comp.get();
+    }
+    renderComponentMarkup(*comp, pollIntervalMs);
   }
 
   // Enqueue an asynchronous background task to the worker pool
