@@ -13,6 +13,7 @@
 #include "checkpoint.hpp"
 #include "interrupt.hpp"
 #include "streaming.hpp"
+#include "dynamic.hpp"
 
 namespace np {
 
@@ -30,9 +31,11 @@ public:
     using NodeFunction = std::function<void(const TState&, TState&)>;
     using SimpleNodeFunction = std::function<void(TState&)>;
     using ConditionalRouter = std::function<std::string(const TState&)>;
+    using CommandFunction = std::function<Command<TState>(TState&)>;
 
     struct CompiledGraph {
         std::unordered_map<std::string, NodeFunction> nodes;
+        std::unordered_map<std::string, CommandFunction> commandNodes;
         std::unordered_map<std::string, std::vector<std::string>> staticEdges;
         std::unordered_map<std::string, std::pair<ConditionalRouter, std::unordered_map<std::string, std::string>>> conditionalEdges;
         std::string entryNode;
@@ -100,8 +103,29 @@ public:
                         emitter->emitNodeStart(nodeName);
                     }
 
+                    bool handledCommand = false;
+                    std::string dynamicTarget;
+
                     try {
-                        nodeIt->second(currentState, currentState);
+                        auto cmdIt = commandNodes.find(nodeName);
+                        if (cmdIt != commandNodes.end()) {
+                            Command<TState> cmd = cmdIt->second(currentState);
+                            if (cmd.update) {
+                                cmd.update(currentState);
+                            }
+                            if (!cmd.gotoNode.empty() && cmd.gotoNode != END) {
+                                nextNodes.push_back(cmd.gotoNode);
+                            }
+                            handledCommand = true;
+                        } else {
+                            nodeIt->second(currentState, currentState);
+                            if (DynamicRoute<TState>::consume(dynamicTarget)) {
+                                if (!dynamicTarget.empty() && dynamicTarget != END) {
+                                    nextNodes.push_back(dynamicTarget);
+                                }
+                                handledCommand = true;
+                            }
+                        }
                     } catch (GraphInterruptException& ex) {
                         if (ex.payload().threadId.empty()) ex.payload().threadId = threadId;
                         if (ex.payload().nodeId.empty()) ex.payload().nodeId = nodeName;
@@ -139,25 +163,27 @@ public:
                         throw GraphInterruptException(std::move(p));
                     }
 
-                    // Check conditional edges first
-                    auto condIt = conditionalEdges.find(nodeName);
-                    if (condIt != conditionalEdges.end()) {
-                        std::string routeDecision = condIt->second.first(currentState);
-                        auto pathIt = condIt->second.second.find(routeDecision);
-                        if (pathIt == condIt->second.second.end()) {
-                            throw std::runtime_error("Conditional routing error at node '" + nodeName + 
-                                                     "': unmapped decision '" + routeDecision + "'.");
-                        }
-                        if (pathIt->second != END) {
-                            nextNodes.push_back(pathIt->second);
-                        }
-                    } else {
-                        // Check static edges
-                        auto staticIt = staticEdges.find(nodeName);
-                        if (staticIt != staticEdges.end()) {
-                            for (const auto& target : staticIt->second) {
-                                if (target != END) {
-                                    nextNodes.push_back(target);
+                    if (!handledCommand) {
+                        // Check conditional edges first
+                        auto condIt = conditionalEdges.find(nodeName);
+                        if (condIt != conditionalEdges.end()) {
+                            std::string routeDecision = condIt->second.first(currentState);
+                            auto pathIt = condIt->second.second.find(routeDecision);
+                            if (pathIt == condIt->second.second.end()) {
+                                throw std::runtime_error("Conditional routing error at node '" + nodeName + 
+                                                         "': unmapped decision '" + routeDecision + "'.");
+                            }
+                            if (pathIt->second != END) {
+                                nextNodes.push_back(pathIt->second);
+                            }
+                        } else {
+                            // Check static edges
+                            auto staticIt = staticEdges.find(nodeName);
+                            if (staticIt != staticEdges.end()) {
+                                for (const auto& target : staticIt->second) {
+                                    if (target != END) {
+                                        nextNodes.push_back(target);
+                                    }
                                 }
                             }
                         }
@@ -322,8 +348,27 @@ public:
                         emitter->emitNodeStart(nodeName);
                     }
 
+                    bool handledCommand = false;
+                    std::string dynamicTarget;
+
                     try {
-                        nodeIt->second(currentState, currentState);
+                        auto cmdIt = commandNodes.find(nodeName);
+                        if (cmdIt != commandNodes.end()) {
+                            Command<TState> cmd = cmdIt->second(currentState);
+                            if (cmd.update) cmd.update(currentState);
+                            if (!cmd.gotoNode.empty() && cmd.gotoNode != END) {
+                                nextNodes.push_back(cmd.gotoNode);
+                            }
+                            handledCommand = true;
+                        } else {
+                            nodeIt->second(currentState, currentState);
+                            if (DynamicRoute<TState>::consume(dynamicTarget)) {
+                                if (!dynamicTarget.empty() && dynamicTarget != END) {
+                                    nextNodes.push_back(dynamicTarget);
+                                }
+                                handledCommand = true;
+                            }
+                        }
                     } catch (GraphInterruptException& ex) {
                         if (ex.payload().threadId.empty()) ex.payload().threadId = threadId;
                         if (ex.payload().nodeId.empty()) ex.payload().nodeId = nodeName;
@@ -357,18 +402,20 @@ public:
                         throw GraphInterruptException(std::move(p));
                     }
 
-                    auto condIt = conditionalEdges.find(nodeName);
-                    if (condIt != conditionalEdges.end()) {
-                        std::string routeDecision = condIt->second.first(currentState);
-                        auto pathIt = condIt->second.second.find(routeDecision);
-                        if (pathIt != condIt->second.second.end() && pathIt->second != END) {
-                            nextNodes.push_back(pathIt->second);
-                        }
-                    } else {
-                        auto staticIt = staticEdges.find(nodeName);
-                        if (staticIt != staticEdges.end()) {
-                            for (const auto& target : staticIt->second) {
-                                if (target != END) nextNodes.push_back(target);
+                    if (!handledCommand) {
+                        auto condIt = conditionalEdges.find(nodeName);
+                        if (condIt != conditionalEdges.end()) {
+                            std::string routeDecision = condIt->second.first(currentState);
+                            auto pathIt = condIt->second.second.find(routeDecision);
+                            if (pathIt != condIt->second.second.end() && pathIt->second != END) {
+                                nextNodes.push_back(pathIt->second);
+                            }
+                        } else {
+                            auto staticIt = staticEdges.find(nodeName);
+                            if (staticIt != staticEdges.end()) {
+                                for (const auto& target : staticIt->second) {
+                                    if (target != END) nextNodes.push_back(target);
+                                }
                             }
                         }
                     }
@@ -426,6 +473,7 @@ public:
 
 private:
     std::unordered_map<std::string, NodeFunction> m_nodes;
+    std::unordered_map<std::string, CommandFunction> m_commandNodes;
     std::unordered_map<std::string, std::vector<std::string>> m_staticEdges;
     std::unordered_map<std::string, std::pair<ConditionalRouter, std::unordered_map<std::string, std::string>>> m_conditionalEdges;
     std::string m_entryNode;
@@ -470,6 +518,39 @@ public:
             TChild childInput = stateExtractor(parentState);
             TChild childOutput = childGraph.invoke(std::move(childInput));
             stateReconciler(parentState, std::move(childOutput));
+        });
+    }
+
+    // Register a command-returning node that dynamically directs the next edge
+    StateGraph& addCommandNode(const std::string& name, CommandFunction fn) {
+        if (name == START || name == END) {
+            throw std::invalid_argument("Cannot use reserved node name: " + name);
+        }
+        m_commandNodes[name] = std::move(fn);
+        m_nodes[name] = [](const TState&, TState&) {};
+        return *this;
+    }
+
+    // Register a parallel Map-Reduce node that partitions state, maps across worker threads, and reduces results
+    template <typename TItem, typename TResult, typename Partitioner, typename Mapper, typename Reducer>
+    StateGraph& addMapReduceNode(
+        const std::string& name,
+        Partitioner partitioner,
+        Mapper mapper,
+        Reducer reducer,
+        WorkerPool& pool = WorkerPool::defaultPool()
+    ) {
+        return addNode(name, [partitioner, mapper, reducer, &pool](TState& state) {
+            auto items = partitioner(state);
+            if (items.empty()) return;
+            MapReduceEngine<TItem, TResult>::execute(
+                std::move(items),
+                mapper,
+                [&state, reducer](std::vector<TResult>&& results) {
+                    reducer(state, std::move(results));
+                },
+                pool
+            );
         });
     }
 
@@ -589,6 +670,7 @@ public:
 
         CompiledGraph compiled;
         compiled.nodes = m_nodes;
+        compiled.commandNodes = m_commandNodes;
         compiled.staticEdges = m_staticEdges;
         compiled.conditionalEdges = m_conditionalEdges;
         compiled.entryNode = m_entryNode;

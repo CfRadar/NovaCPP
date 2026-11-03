@@ -141,10 +141,18 @@ public:
         return m_running.load();
     }
 
+    // Enqueue a non-void returning callable returning a std::future
+    template <typename F, typename... Args,
+              typename R = typename std::invoke_result<F, Args...>::type,
+              typename std::enable_if<!std::is_void<R>::value, int>::type = 0>
+    std::future<R> enqueue(F&& f, Args&&... args) {
+        return enqueueWithFuture(std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
     // Framework-wide default worker pool singleton
     // Note: Allocated via pointer to prevent Windows Loader Lock deadlock during static CRT destruction
     static WorkerPool& defaultPool() {
-        static WorkerPool* pool = new WorkerPool(4, 1000);
+        static WorkerPool* pool = new WorkerPool(4, 100000);
         return *pool;
     }
 };
