@@ -11,6 +11,7 @@
 #include "worker_pool.hpp"
 #include "reducers.hpp"
 #include "checkpoint.hpp"
+#include "interrupt.hpp"
 
 namespace np {
 
@@ -37,6 +38,8 @@ public:
         size_t maxRecursionLimit = 50;
         StateChannels<TState> channels;
         std::shared_ptr<ICheckpointer<TState>> checkpointer;
+        std::unordered_set<std::string> interruptBefore;
+        std::unordered_set<std::string> interruptAfter;
 
         size_t nodeCount() const {
             return nodes.size();
@@ -80,7 +83,31 @@ public:
                         throw std::runtime_error("Graph node execution error: node '" + nodeName + "' not registered.");
                     }
 
-                    nodeIt->second(currentState, currentState);
+                    if (interruptBefore.count(nodeName)) {
+                        InterruptPayload p("Declarative breakpoint before " + nodeName, "breakpoint", nodeName, true);
+                        p.threadId = threadId;
+                        p.nodeId = nodeName;
+                        if (checkpointer && !threadId.empty()) {
+                            checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState,
+                                "{\"status\":\"interrupted\",\"type\":\"breakpoint_before\",\"node\":\"" + nodeName + "\",\"resumeSameNode\":true}");
+                        }
+                        throw GraphInterruptException(std::move(p));
+                    }
+
+                    try {
+                        nodeIt->second(currentState, currentState);
+                    } catch (GraphInterruptException& ex) {
+                        if (ex.payload().threadId.empty()) ex.payload().threadId = threadId;
+                        if (ex.payload().nodeId.empty()) ex.payload().nodeId = nodeName;
+                        if (checkpointer && !threadId.empty()) {
+                            std::string metaJson = "{\"status\":\"interrupted\",\"node\":\"" + nodeName +
+                                                   "\",\"action\":\"" + ex.payload().actionRequired +
+                                                   "\",\"message\":\"" + ex.payload().message +
+                                                   "\",\"resumeSameNode\":" + (ex.payload().resumeSameNode ? "true" : "false") + "}";
+                            checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState, metaJson);
+                        }
+                        throw;
+                    }
 
                     if (listener) {
                         listener(nodeName, stepCount, currentState);
@@ -89,6 +116,17 @@ public:
                     if (checkpointer && !threadId.empty()) {
                         checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState);
                         parentStep = static_cast<int64_t>(stepCount);
+                    }
+
+                    if (interruptAfter.count(nodeName)) {
+                        InterruptPayload p("Declarative breakpoint after " + nodeName, "breakpoint", nodeName, false);
+                        p.threadId = threadId;
+                        p.nodeId = nodeName;
+                        if (checkpointer && !threadId.empty()) {
+                            checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState,
+                                "{\"status\":\"interrupted\",\"type\":\"breakpoint_after\",\"node\":\"" + nodeName + "\",\"resumeSameNode\":false}");
+                        }
+                        throw GraphInterruptException(std::move(p));
                     }
 
                     // Check conditional edges first
@@ -199,8 +237,9 @@ public:
             return invoke(std::move(initial), "", workers, listener);
         }
 
-        // Resume an existing thread from its latest saved checkpoint
+        // Resume an existing thread from its latest saved checkpoint with optional state mutator
         TState resume(const std::string& threadId,
+                      std::function<void(TState&)> stateMutator,
                       WorkerPool& workers = WorkerPool::defaultPool(),
                       StepListener<TState> listener = nullptr) const {
             if (!checkpointer) {
@@ -212,10 +251,25 @@ public:
                 throw std::runtime_error("Cannot resume thread '" + threadId + "': No checkpoint found.");
             }
 
+            size_t stepCount = static_cast<size_t>(meta.checkpointId);
+            int64_t parentStep = meta.checkpointId;
+
+            if (stateMutator) {
+                stateMutator(currentState);
+                stepCount++;
+                checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, "human_input", currentState, "{\"status\":\"resumed\"}");
+                parentStep = static_cast<int64_t>(stepCount);
+            }
+
+            bool isInterrupted = (meta.metadata.find("\"status\":\"interrupted\"") != std::string::npos);
+            bool resumeSameNode = (meta.metadata.find("\"resumeSameNode\":true") != std::string::npos);
+
             // Determine next pending nodes from the last checkpointed node
             std::vector<std::string> activeNodes;
             if (meta.nodeName == START) {
                 activeNodes.push_back(entryNode);
+            } else if (isInterrupted && resumeSameNode) {
+                activeNodes.push_back(meta.nodeName);
             } else {
                 auto condIt = conditionalEdges.find(meta.nodeName);
                 if (condIt != conditionalEdges.end()) {
@@ -238,8 +292,6 @@ public:
                 return currentState; // Already reached END
             }
 
-            size_t stepCount = static_cast<size_t>(meta.checkpointId);
-            int64_t parentStep = meta.checkpointId;
             std::vector<std::string> nextNodes;
 
             while (!activeNodes.empty()) {
@@ -255,11 +307,36 @@ public:
                         throw std::runtime_error("Graph node execution error: node '" + nodeName + "' not registered.");
                     }
 
-                    nodeIt->second(currentState, currentState);
+                    try {
+                        nodeIt->second(currentState, currentState);
+                    } catch (GraphInterruptException& ex) {
+                        if (ex.payload().threadId.empty()) ex.payload().threadId = threadId;
+                        if (ex.payload().nodeId.empty()) ex.payload().nodeId = nodeName;
+                        if (checkpointer && !threadId.empty()) {
+                            std::string metaJson = "{\"status\":\"interrupted\",\"node\":\"" + nodeName +
+                                                   "\",\"action\":\"" + ex.payload().actionRequired +
+                                                   "\",\"message\":\"" + ex.payload().message +
+                                                   "\",\"resumeSameNode\":" + (ex.payload().resumeSameNode ? "true" : "false") + "}";
+                            checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState, metaJson);
+                        }
+                        throw;
+                    }
+
                     if (listener) listener(nodeName, stepCount, currentState);
 
                     checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState);
                     parentStep = static_cast<int64_t>(stepCount);
+
+                    if (interruptAfter.count(nodeName)) {
+                        InterruptPayload p("Declarative breakpoint after " + nodeName, "breakpoint", nodeName, false);
+                        p.threadId = threadId;
+                        p.nodeId = nodeName;
+                        if (checkpointer && !threadId.empty()) {
+                            checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState,
+                                "{\"status\":\"interrupted\",\"type\":\"breakpoint_after\",\"node\":\"" + nodeName + "\",\"resumeSameNode\":false}");
+                        }
+                        throw GraphInterruptException(std::move(p));
+                    }
 
                     auto condIt = conditionalEdges.find(nodeName);
                     if (condIt != conditionalEdges.end()) {
@@ -282,16 +359,31 @@ public:
             return currentState;
         }
 
+        // Standard resume without state mutation
+        TState resume(const std::string& threadId,
+                      WorkerPool& workers = WorkerPool::defaultPool(),
+                      StepListener<TState> listener = nullptr) const {
+            return resume(threadId, nullptr, workers, listener);
+        }
+
         // Fork an existing thread at a specific historical checkpoint and resume into new thread
         TState forkAndResume(const std::string& sourceThread, int64_t sourceCheckpoint,
                              const std::string& newThread,
+                             std::function<void(TState&)> stateMutator,
                              WorkerPool& workers = WorkerPool::defaultPool(),
                              StepListener<TState> listener = nullptr) const {
             if (!checkpointer) {
                 throw std::runtime_error("Cannot fork thread: No checkpointer configured on graph.");
             }
             checkpointer->forkTimeline(sourceThread, sourceCheckpoint, newThread);
-            return resume(newThread, workers, listener);
+            return resume(newThread, std::move(stateMutator), workers, listener);
+        }
+
+        TState forkAndResume(const std::string& sourceThread, int64_t sourceCheckpoint,
+                             const std::string& newThread,
+                             WorkerPool& workers = WorkerPool::defaultPool(),
+                             StepListener<TState> listener = nullptr) const {
+            return forkAndResume(sourceThread, sourceCheckpoint, newThread, nullptr, workers, listener);
         }
     };
 
@@ -303,6 +395,8 @@ private:
     size_t m_maxRecursion = 50;
     StateChannels<TState> m_channels;
     std::shared_ptr<ICheckpointer<TState>> m_checkpointer;
+    std::unordered_set<std::string> m_interruptBefore;
+    std::unordered_set<std::string> m_interruptAfter;
 
 public:
     StateGraph() = default;
@@ -395,6 +489,25 @@ public:
         return m_checkpointer;
     }
 
+    // Add declarative interrupt before a node executes
+    StateGraph& addInterruptBefore(const std::string& nodeName) {
+        m_interruptBefore.insert(nodeName);
+        return *this;
+    }
+
+    // Add declarative interrupt after a node executes
+    StateGraph& addInterruptAfter(const std::string& nodeName) {
+        m_interruptAfter.insert(nodeName);
+        return *this;
+    }
+
+    // Set multiple declarative breakpoints
+    StateGraph& setBreakpoints(const std::vector<std::string>& before, const std::vector<std::string>& after = {}) {
+        for (const auto& b : before) m_interruptBefore.insert(b);
+        for (const auto& a : after) m_interruptAfter.insert(a);
+        return *this;
+    }
+
     // Set maximum execution super-steps (recursion limit)
     StateGraph& setMaxRecursion(size_t limit) {
         m_maxRecursion = limit;
@@ -445,6 +558,8 @@ public:
         compiled.maxRecursionLimit = m_maxRecursion;
         compiled.channels = m_channels;
         compiled.checkpointer = m_checkpointer;
+        compiled.interruptBefore = m_interruptBefore;
+        compiled.interruptAfter = m_interruptAfter;
         return compiled;
     }
 };
