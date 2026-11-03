@@ -33,8 +33,11 @@ private:
     std::string m_whatMsg;
 
 public:
+    std::string nodeName;
+
     explicit GraphInterruptException(InterruptPayload payload)
         : m_payload(std::move(payload)) {
+        nodeName = m_payload.nodeId;
         m_whatMsg = "Graph execution interrupted at node '" + m_payload.nodeId +
                     "': " + m_payload.message + " (Action: " + m_payload.actionRequired + ")";
     }
@@ -133,12 +136,16 @@ public:
 
 
 // BreakpointManager adapter matching documentation specifications
+using InterruptSignal = GraphInterruptException;
+
 class BreakpointManager {
 private:
     std::unordered_set<std::string> m_interruptedNodes;
     mutable std::mutex m_mutex;
 
 public:
+    void interruptBefore(const std::string& nodeName) { addBreakpoint(nodeName); }
+
     void addBreakpoint(const std::string& nodeName) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_interruptedNodes.insert(nodeName);
