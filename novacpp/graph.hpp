@@ -14,6 +14,7 @@
 #include "interrupt.hpp"
 #include "streaming.hpp"
 #include "dynamic.hpp"
+#include "telemetry.hpp"
 
 namespace np {
 
@@ -44,6 +45,7 @@ public:
         std::shared_ptr<ICheckpointer<TState>> checkpointer;
         std::unordered_set<std::string> interruptBefore;
         std::unordered_set<std::string> interruptAfter;
+        std::chrono::milliseconds timeoutMs{0};
 
         size_t nodeCount() const {
             return nodes.size();
@@ -51,6 +53,36 @@ public:
 
         bool hasNode(const std::string& name) const {
             return nodes.find(name) != nodes.end();
+        }
+
+        std::string toMermaid() const {
+            std::ostringstream ss;
+            ss << "graph TD\n";
+            if (!entryNode.empty()) {
+                ss << "    START([START]) --> " << entryNode << "\n";
+            }
+            for (const auto& [from, targets] : staticEdges) {
+                for (const auto& to : targets) {
+                    if (to == END) {
+                        ss << "    " << from << " --> END([END])\n";
+                    } else {
+                        ss << "    " << from << " --> " << to << "\n";
+                    }
+                }
+            }
+            for (const auto& [from, pair] : conditionalEdges) {
+                for (const auto& [decision, target] : pair.second) {
+                    if (target == END) {
+                        ss << "    " << from << " -->|" << decision << "| END([END])\n";
+                    } else {
+                        ss << "    " << from << " -->|" << decision << "| " << target << "\n";
+                    }
+                }
+            }
+            for (const auto& [from, fn] : commandNodes) {
+                ss << "    " << from << " -.->|command goto| DynamicDispatch\n";
+            }
+            return ss.str();
         }
 
         // Synchronous Pregel super-step invocation with optional thread-based durable checkpointing
@@ -73,7 +105,17 @@ public:
                 checkpointer->save(threadId, 0, 0, START, currentState, "{\"status\":\"start\"}");
             }
 
+            auto invokeStartTime = std::chrono::high_resolution_clock::now();
+
             while (!activeNodes.empty()) {
+                if (timeoutMs.count() > 0) {
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - invokeStartTime);
+                    if (elapsed >= timeoutMs) {
+                        throw std::runtime_error("Graph execution timeout exceeded: " + std::to_string(timeoutMs.count()) + " ms");
+                    }
+                }
+                Telemetry::recordSuperStep();
+
                 if (++stepCount > maxRecursionLimit) {
                     throw std::runtime_error("Graph recursion limit exceeded: " + std::to_string(maxRecursionLimit));
                 }
@@ -106,6 +148,7 @@ public:
                     bool handledCommand = false;
                     std::string dynamicTarget;
 
+                    TraceSpan span(nodeName);
                     try {
                         auto cmdIt = commandNodes.find(nodeName);
                         if (cmdIt != commandNodes.end()) {
@@ -126,6 +169,7 @@ public:
                                 handledCommand = true;
                             }
                         }
+                        Telemetry::recordNodeSuccess();
                     } catch (GraphInterruptException& ex) {
                         if (ex.payload().threadId.empty()) ex.payload().threadId = threadId;
                         if (ex.payload().nodeId.empty()) ex.payload().nodeId = nodeName;
@@ -136,6 +180,9 @@ public:
                                                    "\",\"resumeSameNode\":" + (ex.payload().resumeSameNode ? "true" : "false") + "}";
                             checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState, metaJson);
                         }
+                        throw;
+                    } catch (...) {
+                        Telemetry::recordNodeFailure();
                         throw;
                     }
 
@@ -150,6 +197,7 @@ public:
                     if (checkpointer && !threadId.empty()) {
                         checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState);
                         parentStep = static_cast<int64_t>(stepCount);
+                        Telemetry::recordCheckpoint();
                     }
 
                     if (interruptAfter.count(nodeName)) {
@@ -482,6 +530,7 @@ private:
     std::shared_ptr<ICheckpointer<TState>> m_checkpointer;
     std::unordered_set<std::string> m_interruptBefore;
     std::unordered_set<std::string> m_interruptAfter;
+    std::chrono::milliseconds m_timeoutMs{0};
 
 public:
     StateGraph() = default;
@@ -632,6 +681,17 @@ public:
         return *this;
     }
 
+    // Set execution time budget (timeout)
+    StateGraph& setTimeout(std::chrono::milliseconds timeout) {
+        m_timeoutMs = timeout;
+        return *this;
+    }
+
+    // Export current graph structure in Mermaid DAG format
+    std::string toMermaid() const {
+        return compile().toMermaid();
+    }
+
     // Compile and validate topological integrity
     CompiledGraph compile() const {
         if (m_entryNode.empty()) {
@@ -679,6 +739,7 @@ public:
         compiled.checkpointer = m_checkpointer;
         compiled.interruptBefore = m_interruptBefore;
         compiled.interruptAfter = m_interruptAfter;
+        compiled.timeoutMs = m_timeoutMs;
         return compiled;
     }
 };
