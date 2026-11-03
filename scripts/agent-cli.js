@@ -165,7 +165,7 @@ async function handleInstall(args, targetDir) {
 
         // Write .nova-agent.json manifest
         const manifest = {
-            version: "2.1.1",
+            version: "3.0.0",
             installed_at: new Date().toISOString(),
             agents: targetAgents,
             skills_count: installedSkillsCount,
