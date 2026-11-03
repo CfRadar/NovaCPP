@@ -10,6 +10,7 @@
 #include <chrono>
 #include "worker_pool.hpp"
 #include "reducers.hpp"
+#include "checkpoint.hpp"
 
 namespace np {
 
@@ -35,6 +36,7 @@ public:
         std::string entryNode;
         size_t maxRecursionLimit = 50;
         StateChannels<TState> channels;
+        std::shared_ptr<ICheckpointer<TState>> checkpointer;
 
         size_t nodeCount() const {
             return nodes.size();
@@ -44,8 +46,9 @@ public:
             return nodes.find(name) != nodes.end();
         }
 
-        // Synchronous Pregel super-step invocation
-        TState invoke(TState initial, WorkerPool& workers = WorkerPool::defaultPool(),
+        // Synchronous Pregel super-step invocation with optional thread-based durable checkpointing
+        TState invoke(TState initial, const std::string& threadId,
+                      WorkerPool& workers = WorkerPool::defaultPool(),
                       StepListener<TState> listener = nullptr) const {
             TState currentState = std::move(initial);
             std::vector<std::string> activeNodes;
@@ -56,6 +59,11 @@ public:
             nextNodes.reserve(8);
 
             size_t stepCount = 0;
+            int64_t parentStep = 0;
+
+            if (checkpointer && !threadId.empty()) {
+                checkpointer->save(threadId, 0, 0, START, currentState, "{\"status\":\"start\"}");
+            }
 
             while (!activeNodes.empty()) {
                 if (++stepCount > maxRecursionLimit) {
@@ -76,6 +84,11 @@ public:
 
                     if (listener) {
                         listener(nodeName, stepCount, currentState);
+                    }
+
+                    if (checkpointer && !threadId.empty()) {
+                        checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState);
+                        parentStep = static_cast<int64_t>(stepCount);
                     }
 
                     // Check conditional edges first
@@ -162,12 +175,123 @@ public:
                             }
                         }
                     }
+
+                    if (checkpointer && !threadId.empty()) {
+                        std::string multiName = "";
+                        for (size_t i = 0; i < activeNodes.size(); ++i) {
+                            if (i > 0) multiName += ",";
+                            multiName += activeNodes[i];
+                        }
+                        checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, multiName, currentState);
+                        parentStep = static_cast<int64_t>(stepCount);
+                    }
                 }
 
                 activeNodes = std::move(nextNodes);
             }
 
             return currentState;
+        }
+
+        // Standard invoke overload (ephemeral without thread checkpointing)
+        TState invoke(TState initial, WorkerPool& workers = WorkerPool::defaultPool(),
+                      StepListener<TState> listener = nullptr) const {
+            return invoke(std::move(initial), "", workers, listener);
+        }
+
+        // Resume an existing thread from its latest saved checkpoint
+        TState resume(const std::string& threadId,
+                      WorkerPool& workers = WorkerPool::defaultPool(),
+                      StepListener<TState> listener = nullptr) const {
+            if (!checkpointer) {
+                throw std::runtime_error("Cannot resume thread: No checkpointer configured on graph.");
+            }
+            TState currentState;
+            CheckpointMetadata meta;
+            if (!checkpointer->loadLatest(threadId, currentState, meta)) {
+                throw std::runtime_error("Cannot resume thread '" + threadId + "': No checkpoint found.");
+            }
+
+            // Determine next pending nodes from the last checkpointed node
+            std::vector<std::string> activeNodes;
+            if (meta.nodeName == START) {
+                activeNodes.push_back(entryNode);
+            } else {
+                auto condIt = conditionalEdges.find(meta.nodeName);
+                if (condIt != conditionalEdges.end()) {
+                    std::string decision = condIt->second.first(currentState);
+                    auto pathIt = condIt->second.second.find(decision);
+                    if (pathIt != condIt->second.second.end() && pathIt->second != END) {
+                        activeNodes.push_back(pathIt->second);
+                    }
+                } else {
+                    auto staticIt = staticEdges.find(meta.nodeName);
+                    if (staticIt != staticEdges.end()) {
+                        for (const auto& target : staticIt->second) {
+                            if (target != END) activeNodes.push_back(target);
+                        }
+                    }
+                }
+            }
+
+            if (activeNodes.empty()) {
+                return currentState; // Already reached END
+            }
+
+            size_t stepCount = static_cast<size_t>(meta.checkpointId);
+            int64_t parentStep = meta.checkpointId;
+            std::vector<std::string> nextNodes;
+
+            while (!activeNodes.empty()) {
+                if (++stepCount > maxRecursionLimit) {
+                    throw std::runtime_error("Graph recursion limit exceeded: " + std::to_string(maxRecursionLimit));
+                }
+                nextNodes.clear();
+
+                if (activeNodes.size() == 1) {
+                    const std::string& nodeName = activeNodes[0];
+                    auto nodeIt = nodes.find(nodeName);
+                    if (nodeIt == nodes.end()) {
+                        throw std::runtime_error("Graph node execution error: node '" + nodeName + "' not registered.");
+                    }
+
+                    nodeIt->second(currentState, currentState);
+                    if (listener) listener(nodeName, stepCount, currentState);
+
+                    checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState);
+                    parentStep = static_cast<int64_t>(stepCount);
+
+                    auto condIt = conditionalEdges.find(nodeName);
+                    if (condIt != conditionalEdges.end()) {
+                        std::string routeDecision = condIt->second.first(currentState);
+                        auto pathIt = condIt->second.second.find(routeDecision);
+                        if (pathIt != condIt->second.second.end() && pathIt->second != END) {
+                            nextNodes.push_back(pathIt->second);
+                        }
+                    } else {
+                        auto staticIt = staticEdges.find(nodeName);
+                        if (staticIt != staticEdges.end()) {
+                            for (const auto& target : staticIt->second) {
+                                if (target != END) nextNodes.push_back(target);
+                            }
+                        }
+                    }
+                }
+                activeNodes = std::move(nextNodes);
+            }
+            return currentState;
+        }
+
+        // Fork an existing thread at a specific historical checkpoint and resume into new thread
+        TState forkAndResume(const std::string& sourceThread, int64_t sourceCheckpoint,
+                             const std::string& newThread,
+                             WorkerPool& workers = WorkerPool::defaultPool(),
+                             StepListener<TState> listener = nullptr) const {
+            if (!checkpointer) {
+                throw std::runtime_error("Cannot fork thread: No checkpointer configured on graph.");
+            }
+            checkpointer->forkTimeline(sourceThread, sourceCheckpoint, newThread);
+            return resume(newThread, workers, listener);
         }
     };
 
@@ -178,6 +302,7 @@ private:
     std::string m_entryNode;
     size_t m_maxRecursion = 50;
     StateChannels<TState> m_channels;
+    std::shared_ptr<ICheckpointer<TState>> m_checkpointer;
 
 public:
     StateGraph() = default;
@@ -260,6 +385,16 @@ public:
         return m_channels;
     }
 
+    // Set durable state checkpointer
+    StateGraph& setCheckpointer(std::shared_ptr<ICheckpointer<TState>> cp) {
+        m_checkpointer = std::move(cp);
+        return *this;
+    }
+
+    std::shared_ptr<ICheckpointer<TState>> checkpointer() const {
+        return m_checkpointer;
+    }
+
     // Set maximum execution super-steps (recursion limit)
     StateGraph& setMaxRecursion(size_t limit) {
         m_maxRecursion = limit;
@@ -309,6 +444,7 @@ public:
         compiled.entryNode = m_entryNode;
         compiled.maxRecursionLimit = m_maxRecursion;
         compiled.channels = m_channels;
+        compiled.checkpointer = m_checkpointer;
         return compiled;
     }
 };

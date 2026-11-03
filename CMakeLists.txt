@@ -139,6 +139,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_react.cpp")
     endif()
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Test/simulate_checkpoint.cpp")
+    add_executable(simulate_checkpoint ../Test/simulate_checkpoint.cpp)
+    target_include_directories(simulate_checkpoint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/novacpp)
+    if(WIN32)
+        target_link_libraries(simulate_checkpoint PRIVATE sqlite3_static ws2_32 winhttp)
+    else()
+        target_link_libraries(simulate_checkpoint PRIVATE sqlite3_static pthread ${CMAKE_DL_LIBS})
+    endif()
+endif()
+
 # Custom target to open the HTML file using the default browser
 if(WIN32)
     add_custom_target(run-html

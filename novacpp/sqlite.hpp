@@ -18,7 +18,14 @@ namespace np {
 
 class SQLiteConnection;
 
+struct SQLiteBlob {
+    std::string data;
+};
+
 namespace detail {
+    inline void bindValue(sqlite3_stmt* stmt, int index, const SQLiteBlob& val) {
+        sqlite3_bind_blob(stmt, index, val.data.data(), static_cast<int>(val.data.size()), SQLITE_TRANSIENT);
+    }
     inline void bindValue(sqlite3_stmt* stmt, int index, int val) {
         sqlite3_bind_int(stmt, index, val);
     }
@@ -47,7 +54,7 @@ namespace detail {
         sqlite3_bind_int(stmt, index, val ? 1 : 0);
     }
     inline void bindValue(sqlite3_stmt* stmt, int index, const std::string& val) {
-        sqlite3_bind_text(stmt, index, val.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, index, val.data(), static_cast<int>(val.size()), SQLITE_TRANSIENT);
     }
     inline void bindValue(sqlite3_stmt* stmt, int index, const char* val) {
         if (val) {
@@ -282,8 +289,9 @@ public:
                 std::map<std::string, std::string> row;
                 for (int i = 0; i < colCount; ++i) {
                     const char* colName = sqlite3_column_name(stmt, i);
-                    const unsigned char* val = sqlite3_column_text(stmt, i);
-                    row[colName ? colName : ""] = val ? reinterpret_cast<const char*>(val) : "";
+                    const void* val = sqlite3_column_blob(stmt, i);
+                    int bytes = sqlite3_column_bytes(stmt, i);
+                    row[colName ? colName : ""] = (val && bytes > 0) ? std::string(reinterpret_cast<const char*>(val), bytes) : "";
                 }
                 rowCallback(row);
             }
