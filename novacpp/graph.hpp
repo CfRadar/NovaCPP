@@ -12,6 +12,7 @@
 #include "reducers.hpp"
 #include "checkpoint.hpp"
 #include "interrupt.hpp"
+#include "streaming.hpp"
 
 namespace np {
 
@@ -52,7 +53,8 @@ public:
         // Synchronous Pregel super-step invocation with optional thread-based durable checkpointing
         TState invoke(TState initial, const std::string& threadId,
                       WorkerPool& workers = WorkerPool::defaultPool(),
-                      StepListener<TState> listener = nullptr) const {
+                      StepListener<TState> listener = nullptr,
+                      StreamEmitter* emitter = nullptr) const {
             TState currentState = std::move(initial);
             std::vector<std::string> activeNodes;
             activeNodes.reserve(8);
@@ -94,6 +96,10 @@ public:
                         throw GraphInterruptException(std::move(p));
                     }
 
+                    if (emitter) {
+                        emitter->emitNodeStart(nodeName);
+                    }
+
                     try {
                         nodeIt->second(currentState, currentState);
                     } catch (GraphInterruptException& ex) {
@@ -107,6 +113,10 @@ public:
                             checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState, metaJson);
                         }
                         throw;
+                    }
+
+                    if (emitter) {
+                        emitter->emitNodeEnd(nodeName);
                     }
 
                     if (listener) {
@@ -241,7 +251,8 @@ public:
         TState resume(const std::string& threadId,
                       std::function<void(TState&)> stateMutator,
                       WorkerPool& workers = WorkerPool::defaultPool(),
-                      StepListener<TState> listener = nullptr) const {
+                      StepListener<TState> listener = nullptr,
+                      StreamEmitter* emitter = nullptr) const {
             if (!checkpointer) {
                 throw std::runtime_error("Cannot resume thread: No checkpointer configured on graph.");
             }
@@ -307,6 +318,10 @@ public:
                         throw std::runtime_error("Graph node execution error: node '" + nodeName + "' not registered.");
                     }
 
+                    if (emitter) {
+                        emitter->emitNodeStart(nodeName);
+                    }
+
                     try {
                         nodeIt->second(currentState, currentState);
                     } catch (GraphInterruptException& ex) {
@@ -320,6 +335,10 @@ public:
                             checkpointer->save(threadId, static_cast<int64_t>(stepCount), parentStep, nodeName, currentState, metaJson);
                         }
                         throw;
+                    }
+
+                    if (emitter) {
+                        emitter->emitNodeEnd(nodeName);
                     }
 
                     if (listener) listener(nodeName, stepCount, currentState);
@@ -384,6 +403,24 @@ public:
                              WorkerPool& workers = WorkerPool::defaultPool(),
                              StepListener<TState> listener = nullptr) const {
             return forkAndResume(sourceThread, sourceCheckpoint, newThread, nullptr, workers, listener);
+        }
+
+        // Stream graph execution events (node_start, node_end) live to StreamEmitter
+        TState stream(TState initial,
+                      StreamEmitter& emitter,
+                      const std::string& threadId = "",
+                      WorkerPool& workers = WorkerPool::defaultPool(),
+                      StepListener<TState> listener = nullptr) const {
+            return invoke(std::move(initial), threadId, workers, listener, &emitter);
+        }
+
+        // Stream resume graph execution events live to StreamEmitter
+        TState streamResume(const std::string& threadId,
+                            StreamEmitter& emitter,
+                            std::function<void(TState&)> stateMutator = nullptr,
+                            WorkerPool& workers = WorkerPool::defaultPool(),
+                            StepListener<TState> listener = nullptr) const {
+            return resume(threadId, std::move(stateMutator), workers, listener, &emitter);
         }
     };
 

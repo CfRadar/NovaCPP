@@ -438,6 +438,53 @@ function initHMR() {
                 navigateTo(window.location.pathname, true);
             });
 
+            // Real-Time Agent Streaming & Surgical DOM Hydration
+            hmrSource.addEventListener('stream-token', (e) => {
+                const data = e.data || '';
+                const target = document.getElementById('agent-live-tokens') || document.querySelector('[data-nova-stream]');
+                if (target) {
+                    target.textContent += data;
+                    target.scrollTop = target.scrollHeight;
+                }
+            });
+
+            hmrSource.addEventListener('node-start', (e) => {
+                const nodeName = e.data || '';
+                const badge = document.getElementById('agent-status-badge');
+                if (badge) {
+                    badge.textContent = 'Active: ' + nodeName;
+                    badge.classList.remove('badge-idle');
+                    badge.classList.add('badge-active');
+                }
+            });
+
+            hmrSource.addEventListener('node-end', (e) => {
+                const nodeName = e.data || '';
+                const badge = document.getElementById('agent-status-badge');
+                if (badge) {
+                    badge.textContent = 'Completed: ' + nodeName;
+                }
+            });
+
+            hmrSource.addEventListener('tool-update', (e) => {
+                const container = document.getElementById('agent-tool-status');
+                if (container) {
+                    container.innerHTML = e.data || '';
+                }
+            });
+
+            hmrSource.addEventListener('stream-swap', (e) => {
+                try {
+                    const data = JSON.parse(e.data || '{}');
+                    if (data.target && data.html) {
+                        const el = document.getElementById(data.target);
+                        if (el) {
+                            morphInnerHtml(el, data.html);
+                        }
+                    }
+                } catch (err) {}
+            });
+
             hmrSource.onerror = () => {
                 isReconnecting = true;
                 if (hmrSource) {
