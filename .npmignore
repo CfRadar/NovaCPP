@@ -13,4 +13,6 @@ data
 .agents/**
 *.skill.md
 SKILL.md
+ppt
+ppt/**
 
